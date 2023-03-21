@@ -129,6 +129,7 @@ import java.io.File;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -282,6 +283,7 @@ import static com.facebook.presto.hive.HiveUtil.encodeViewData;
 import static com.facebook.presto.hive.HiveUtil.getPartitionKeyColumnHandles;
 import static com.facebook.presto.hive.HiveUtil.hiveColumnHandles;
 import static com.facebook.presto.hive.HiveUtil.parsePartitionValue;
+import static com.facebook.presto.hive.HiveUtil.parseHiveTimestamp;
 import static com.facebook.presto.hive.HiveUtil.translateHiveUnsupportedTypeForTemporaryTable;
 import static com.facebook.presto.hive.HiveUtil.translateHiveUnsupportedTypesForTemporaryTable;
 import static com.facebook.presto.hive.HiveUtil.verifyPartitionTypeSupported;
@@ -1525,6 +1527,29 @@ public class HiveMetadata
         return tableHandle;
     }
 
+    private List<String> normalizeKey(List<String> key, List<Type> partitionTypes)
+    {
+        checkArgument(
+                key.size() == partitionTypes.size(),
+                "Key length (%d) does not match the number of columns (%d)",
+                key.size(),
+                partitionTypes.size());
+        List<String> newKey = new ArrayList<String>();
+        for (int i = 0; i < partitionTypes.size(); i++) {
+            String keyValue = key.get(i);
+            Type type = partitionTypes.get(i);
+            // Convert other valid Timestamp formats such as Date ("1969-12-31"), Spark Timestamp ("1969-12-31 00:00:00") to Presto Timestamp string.
+            if (type.equals(TIMESTAMP)) {
+                Timestamp time = new Timestamp(parseHiveTimestamp(keyValue, timeZone));
+                newKey.add(time.toString());
+            }
+            else {
+                newKey.add(keyValue);
+            }
+        }
+        return newKey;
+    }
+
     @Override
     public void finishStatisticsCollection(ConnectorSession session, ConnectorTableHandle tableHandle, Collection<ComputedStatistics> computedStatistics)
     {
@@ -1573,7 +1598,9 @@ public class HiveMetadata
                     .filter(column -> !column.isHidden())
                     .collect(toImmutableMap(HiveColumnHandle::getName, column -> ImmutableSet.copyOf(metastore.getSupportedColumnStatistics(metastoreContext, typeManager.getType(column.getTypeSignature())))));
             Supplier<PartitionStatistics> emptyPartitionStatistics = Suppliers.memoize(() -> createEmptyPartitionStatistics(columnTypes, columnStatisticTypes));
-
+            List<Type> partitionColumnTypes = partitionColumnNames.stream()
+                    .map(columnTypes::get)
+                    .collect(toImmutableList());
             int usedComputedStatistics = 0;
             List<String> partitionedBy = table.getPartitionColumns().stream()
                     .map(Column::getName)
@@ -1588,14 +1615,26 @@ public class HiveMetadata
                         ? computedStatisticsMap.get(partitionValues)
                         : computedStatisticsMap.get(canonicalizePartitionValues(partitionName, partitionValues, partitionTypes));
                 if (collectedStatistics == null) {
+                    // Only TIMESTAMP types require normalization
+                    // Check if key needs to be normalized
+                    if (partitionColumnTypes.contains(TIMESTAMP)) {
+                        List<String> key = normalizeKey(partitionValues, partitionColumnTypes);
+                        // Check again with the normalized key
+                        collectedStatistics = computedStatisticsMap.get(key);
+                        if (collectedStatistics != null) {
+                            usedComputedStatistics++;
+                            // Store the statistics against the original key and not the normalized key.
+                            partitionStatistics.put(partitionValues, createPartitionStatistics(session, columnTypes, collectedStatistics, timeZone));
+                            continue;
+                        }
+                    }
                     partitionStatistics.put(partitionValues, emptyPartitionStatistics.get());
+                    continue;
                 }
-                else {
-                    usedComputedStatistics++;
-                    partitionStatistics.put(partitionValues, createPartitionStatistics(session, columnTypes, collectedStatistics, timeZone));
-                }
+                usedComputedStatistics++;
+                partitionStatistics.put(partitionValues, createPartitionStatistics(session, columnTypes, collectedStatistics, timeZone));
             }
-            verify(usedComputedStatistics == computedStatistics.size(),
+            verify(usedComputedStatistics >= computedStatistics.size(),
                     usedComputedStatistics > computedStatistics.size() ?
                             "There are multiple variants of the same partition, e.g. p=1, p=01, p=001. All partitions must follow the same key=value representation" :
                             "All computed statistics must be used");
