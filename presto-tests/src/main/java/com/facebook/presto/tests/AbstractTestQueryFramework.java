@@ -86,6 +86,16 @@ public abstract class AbstractTestQueryFramework
         createTables();
     }
 
+    public void setQueryRunner(QueryRunner queryRunnerArg)
+    {
+        queryRunner = queryRunnerArg;
+    }
+
+    public void setExpectedQueryRunner(ExpectedQueryRunner expectedQueryRunnerArg)
+    {
+        expectedQueryRunner = expectedQueryRunnerArg;
+    }
+
     protected void createTables() {}
 
     protected abstract QueryRunner createQueryRunner()
