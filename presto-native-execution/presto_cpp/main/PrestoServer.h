@@ -25,6 +25,7 @@
 #include "presto_cpp/main/PeriodicHeartbeatManager.h"
 #include "presto_cpp/main/PrestoExchangeSource.h"
 #include "presto_cpp/main/PrestoServerOperations.h"
+#include "presto_cpp/main/SystemSessionProperties.h"
 #include "velox/common/caching/AsyncDataCache.h"
 #include "velox/common/memory/MemoryAllocator.h"
 #if __has_include("filesystem")
@@ -190,6 +191,8 @@ class PrestoServer {
   void reportMemoryInfo(proxygen::ResponseHandler* downstream);
 
   void reportServerInfo(proxygen::ResponseHandler* downstream);
+
+  void reportSessionProperties(proxygen::ResponseHandler* downstream);
 
   void reportNodeStatus(proxygen::ResponseHandler* downstream);
 

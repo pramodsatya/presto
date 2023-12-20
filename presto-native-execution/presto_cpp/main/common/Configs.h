@@ -140,6 +140,11 @@ class ConfigBase {
     return config_->valuesCopy();
   }
 
+  std::unordered_map<std::string, folly::Optional<std::string>>
+  getRegisteredProperties() {
+    return registeredProps_;
+  }
+
   virtual ~ConfigBase() = default;
 
  protected:
@@ -836,6 +841,8 @@ class BaseVeloxQueryConfig : public ConfigBase {
       std::unordered_map<std::string, std::string>& values) const override;
 
   static BaseVeloxQueryConfig* instance();
+
+  std::optional<std::string> getDefaultValue(const std::string& propertyName) const;
 };
 
 } // namespace facebook::presto

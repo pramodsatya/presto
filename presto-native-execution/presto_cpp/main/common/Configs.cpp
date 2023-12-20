@@ -849,4 +849,14 @@ void BaseVeloxQueryConfig::updateLoadedValues(
   }
 }
 
+std::optional<std::string> BaseVeloxQueryConfig::getDefaultValue(
+    const std::string& propertyName) const {
+  auto it = registeredProps_.find(propertyName);
+  if (it != registeredProps_.end()) {
+    if (it->second.has_value()) {
+      return it->second.value();
+    }
+  }
+  return std::nullopt;
+}
 } // namespace facebook::presto
