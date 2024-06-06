@@ -30,6 +30,7 @@ import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.projec
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.values;
 import static com.facebook.presto.sql.planner.iterative.rule.test.PlanBuilder.assignment;
 
+// TODO: add tests when the delegating optimizer is enabled
 public class TestRemoveMapCastRule
         extends BaseRuleTest
 {
@@ -37,8 +38,28 @@ public class TestRemoveMapCastRule
     public void testSubscriptCast()
     {
         tester().assertThat(
-                        ImmutableSet.<Rule<?>>builder().addAll(new SimplifyRowExpressions(getMetadata()).rules()).addAll(new RemoveMapCastRule(getFunctionManager()).rules()).build())
+                        ImmutableSet.<Rule<?>>builder().addAll(new SimplifyRowExpressions(getMetadata(), getExpressionManager()).rules()).addAll(new RemoveMapCastRule(getFunctionManager()).rules()).build())
                 .setSystemProperty(REMOVE_MAP_CAST, "true")
+                .on(p -> {
+                    VariableReferenceExpression a = p.variable("a", DOUBLE);
+                    VariableReferenceExpression feature = p.variable("feature", createMapType(getFunctionManager(), INTEGER, DOUBLE));
+                    VariableReferenceExpression key = p.variable("key", BIGINT);
+                    return p.project(
+                            assignment(a, p.rowExpression("cast(feature as map<bigint, double>)[key]")),
+                            p.values(feature, key));
+                })
+                .matches(
+                        project(
+                                ImmutableMap.of("a", expression("feature[cast(key as integer)]")),
+                                values("feature", "key")));
+    }
+    @Test
+    public void testSubscriptCast2()
+    {
+        tester().assertThat(
+                        ImmutableSet.<Rule<?>>builder().addAll(new SimplifyRowExpressions(getMetadata(), getExpressionManager()).rules()).addAll(new RemoveMapCastRule(getFunctionManager()).rules()).build())
+                .setSystemProperty(REMOVE_MAP_CAST, "true")
+                .setSystemProperty("delegating_row_expression_optimizer_enabled", "true")
                 .on(p -> {
                     VariableReferenceExpression a = p.variable("a", DOUBLE);
                     VariableReferenceExpression feature = p.variable("feature", createMapType(getFunctionManager(), INTEGER, DOUBLE));
@@ -57,7 +78,7 @@ public class TestRemoveMapCastRule
     public void testElementAtCast()
     {
         tester().assertThat(
-                        ImmutableSet.<Rule<?>>builder().addAll(new SimplifyRowExpressions(getMetadata()).rules()).addAll(new RemoveMapCastRule(getFunctionManager()).rules()).build())
+                        ImmutableSet.<Rule<?>>builder().addAll(new SimplifyRowExpressions(getMetadata(), getExpressionManager()).rules()).addAll(new RemoveMapCastRule(getFunctionManager()).rules()).build())
                 .setSystemProperty(REMOVE_MAP_CAST, "true")
                 .on(p -> {
                     VariableReferenceExpression a = p.variable("a", DOUBLE);

@@ -38,6 +38,8 @@ import com.facebook.presto.transaction.TransactionManager;
 import com.google.common.collect.ImmutableMap;
 
 import java.io.Closeable;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -113,6 +115,17 @@ public class RuleTester
         this.pageSourceManager = queryRunner.getPageSourceManager();
         this.accessControl = queryRunner.getAccessControl();
         this.sqlParser = queryRunner.getSqlParser();
+        loadExpressionManager();
+    }
+
+    private void loadExpressionManager()
+    {
+        try {
+            queryRunner.getExpressionManager().loadExpressions();
+        }
+        catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     public RuleAssert assertThat(Rule rule)
