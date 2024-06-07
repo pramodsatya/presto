@@ -28,6 +28,7 @@ import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.security.AccessControlManager;
 import com.facebook.presto.server.security.PasswordAuthenticatorManager;
 import com.facebook.presto.spi.Plugin;
+import com.facebook.presto.spi.PluginV2;
 import com.facebook.presto.spi.analyzer.AnalyzerProvider;
 import com.facebook.presto.spi.classloader.ThreadContextClassLoader;
 import com.facebook.presto.spi.connector.ConnectorFactory;
@@ -333,6 +334,14 @@ public class PluginManager
         }
 
         for (RowExpressionInterpreterServiceFactory batchRowExpressionInterpreterProvider : plugin.getBatchRowExpressionInterpreterProviders()) {
+            log.info("Registering batch row expression interpreter provider %s", batchRowExpressionInterpreterProvider.getName());
+            expressionManager.addBatchRowExpressionInterpreterProvider(batchRowExpressionInterpreterProvider);
+        }
+    }
+
+    public void installPluginV2(PluginV2 plugin)
+    {
+        for (RowExpressionInterpreterServiceFactory batchRowExpressionInterpreterProvider : plugin.getRowExpressionInterpreterServiceFactories()) {
             log.info("Registering batch row expression interpreter provider %s", batchRowExpressionInterpreterProvider.getName());
             expressionManager.addBatchRowExpressionInterpreterProvider(batchRowExpressionInterpreterProvider);
         }
