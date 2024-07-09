@@ -14,6 +14,8 @@
 
 #include "presto_cpp/main/runtime-metrics/PrometheusStatsReporter.h"
 
+#include <iostream>
+#include <fstream>
 #include <gtest/gtest.h>
 
 namespace facebook::presto::prometheus {
@@ -150,5 +152,29 @@ TEST_F(PrometheusReporterTest, testHistogramSummary) {
           ",quantile=\"0.99\"} 85",
       histSummaryKey + "_summary{" + labelsSerialized + ",quantile=\"1\"} 85"};
   verifySerializedResult(fullSerializedResult, histogramMetricsFormatted);
+}
+
+TEST_F(PrometheusReporterTest, testHistogram) {
+  std::string histogramKey = "test.histogram.key";
+  reporter->registerHistogramMetricExportType(histogramKey, 10, 0, 100, {});
+  int recordCount = 10000000;
+  std::ofstream ofile;
+  ofile.open("test.csv");
+  for (int i = 0; i < recordCount; ++i) {
+    std::chrono::system_clock::time_point start = std::chrono::system_clock::now();
+    reporter->addHistogramMetricValue(histogramKey, 10);
+    uint64_t timeTaken = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::system_clock::now() - start).count();
+    ofile << __func__ << "," << std::chrono::duration_cast<std::chrono::microseconds>(start.time_since_epoch()).count() << "," << timeTaken << ",\n";
+
+    if (i == 1000) {
+      start = std::chrono::system_clock::now();
+      reporter->fetchMetrics();
+      timeTaken = std::chrono::duration_cast<std::chrono::microseconds>(
+                      std::chrono::system_clock::now() - start).count();
+      ofile << "fetchMetrics," << std::chrono::duration_cast<std::chrono::microseconds>(start.time_since_epoch()).count() << "," << timeTaken << ",\n";
+    }
+  }
+  ofile.close();
 }
 } // namespace facebook::presto::prometheus

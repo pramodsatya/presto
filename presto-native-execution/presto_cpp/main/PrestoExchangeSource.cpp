@@ -114,8 +114,15 @@ PrestoExchangeSource::PrestoExchangeSource(
       sslContext_,
       [](size_t bufferBytes) {
         RECORD_METRIC_VALUE(kCounterHttpClientPrestoExchangeNumOnBody);
-        RECORD_HISTOGRAM_METRIC_VALUE(
-            kCounterHttpClientPrestoExchangeOnBodyBytes, bufferBytes);
+//        std::chrono::steady_clock::time_point start =
+//            std::chrono::steady_clock::now();
+//        RECORD_HISTOGRAM_METRIC_VALUE(
+//            kCounterHttpClientPrestoExchangeOnBodyBytes, bufferBytes);
+//        uint64_t timeTaken =
+//            std::chrono::duration_cast<std::chrono::microseconds>(
+//                std::chrono::steady_clock::now() - start)
+//                .count();
+//        VLOG(1) << "Add => Function: " << __func__ << " Time: " << timeTaken;
       });
 }
 
