@@ -33,16 +33,16 @@ void registerPrestoMetrics() {
   DEFINE_METRIC(
       kCounterHttpClientPrestoExchangeNumOnBody,
       facebook::velox::StatType::COUNT);
-  DEFINE_HISTOGRAM_METRIC(
-      kCounterHttpClientPrestoExchangeOnBodyBytes,
-      1000,
-      0,
-      1000000,
-      50,
-      90,
-      95,
-      99,
-      100);
+//  DEFINE_HISTOGRAM_METRIC(
+//      kCounterHttpClientPrestoExchangeOnBodyBytes,
+//      1000,
+//      0,
+//      1000000,
+//      50,
+//      90,
+//      95,
+//      99,
+//      100);
   DEFINE_METRIC(
       kCounterHttpClientNumConnectionsCreated, facebook::velox::StatType::SUM);
   DEFINE_METRIC(kCounterNumQueryContexts, facebook::velox::StatType::AVG);
@@ -99,16 +99,16 @@ void registerPrestoMetrics() {
       kCounterOsNumVoluntaryContextSwitches, facebook::velox::StatType::AVG);
   DEFINE_METRIC(
       kCounterOsNumForcedContextSwitches, facebook::velox::StatType::AVG);
-  DEFINE_HISTOGRAM_METRIC(
-      kCounterExchangeSourcePeakQueuedBytes,
-      1l * 1024 * 1024 * 1024,
-      0,
-      62l * 1024 * 1024 * 1024, // max bucket value: 62GB
-      50,
-      90,
-      95,
-      99,
-      100);
+//  DEFINE_HISTOGRAM_METRIC(
+//      kCounterExchangeSourcePeakQueuedBytes,
+//      1l * 1024 * 1024 * 1024,
+//      0,
+//      62l * 1024 * 1024 * 1024, // max bucket value: 62GB
+//      50,
+//      90,
+//      95,
+//      99,
+//      100);
 
   // NOTE: Metrics type exporting for file handle cache counters are in
   // PeriodicTaskManager because they have dynamic names. The following counters
