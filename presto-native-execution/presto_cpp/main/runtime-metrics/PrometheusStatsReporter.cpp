@@ -21,6 +21,7 @@
 #include <prometheus/registry.h>
 #include <prometheus/summary.h>
 #include <prometheus/text_serializer.h>
+#include "velox/common/base/VeloxException.h"
 
 namespace facebook::presto::prometheus {
 
@@ -193,19 +194,19 @@ void PrometheusStatsReporter::addMetricValue(
   addMetricValue(key.toString().c_str(), value);
 }
 
-void PrometheusStatsReporter::addHistogramMetricValue(
+folly::SemiFuture<folly::Unit> PrometheusStatsReporter::addHistogramMetricValue(
     const std::string& key,
     size_t value) const {
-  addHistogramMetricValue(key.c_str(), value);
+  return addHistogramMetricValue(key.c_str(), value);
 }
 
-void PrometheusStatsReporter::addHistogramMetricValue(
+folly::SemiFuture<folly::Unit> PrometheusStatsReporter::addHistogramMetricValue(
     const char* key,
     size_t value) const {
   auto metricIterator = registeredMetricsMap_.find(key);
   if (metricIterator == registeredMetricsMap_.end()) {
-    VLOG(1) << "addMetricValue for unregistered metric " << key;
-    return;
+    auto errorMessage = fmt::format("addMetricValue for unregistered metric {}", key);
+    return velox::VeloxUserError(std::current_exception(), errorMessage, false);
   }
   auto histogram = reinterpret_cast<::prometheus::Histogram*>(
       metricIterator->second.metricPtr);
@@ -218,12 +219,13 @@ void PrometheusStatsReporter::addHistogramMetricValue(
         metricIterator->second.metricPtr);
     summary->Observe(value);
   }
+  return folly::makeSemiFuture();
 }
 
-void PrometheusStatsReporter::addHistogramMetricValue(
+folly::SemiFuture<folly::Unit> PrometheusStatsReporter::addHistogramMetricValue(
     folly::StringPiece key,
     size_t value) const {
-  addHistogramMetricValue(key.toString().c_str(), value);
+  return addHistogramMetricValue(key.toString().c_str(), value);
 }
 
 std::string PrometheusStatsReporter::fetchMetrics() {

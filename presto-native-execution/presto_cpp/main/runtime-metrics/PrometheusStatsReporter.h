@@ -67,12 +67,12 @@ class PrometheusStatsReporter : public facebook::velox::BaseStatsReporter {
 
   void addMetricValue(folly::StringPiece key, size_t value = 1) const override;
 
-  void addHistogramMetricValue(const std::string& key, size_t value)
+  folly::SemiFuture<folly::Unit> addHistogramMetricValue(const std::string& key, size_t value)
       const override;
 
-  void addHistogramMetricValue(const char* key, size_t value) const override;
+  folly::SemiFuture<folly::Unit> addHistogramMetricValue(const char* key, size_t value) const override;
 
-  void addHistogramMetricValue(folly::StringPiece key, size_t value)
+  folly::SemiFuture<folly::Unit> addHistogramMetricValue(folly::StringPiece key, size_t value)
       const override;
 
   std::string fetchMetrics() override;
