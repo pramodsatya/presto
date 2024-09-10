@@ -549,11 +549,6 @@ public class PrestoNativeQueryRunnerUtils
             boolean enableRuntimeMetricsCollection,
             boolean enableSsdCache)
     {
-        return getExternalWorkerLauncher(catalogName, prestoServerPath, OptionalInt.empty(), cacheMaxSize, remoteFunctionServerUds, failOnNestedLoopJoin, isCoordinatorSidecarEnabled);
-    }
-
-    public static Optional<BiFunction<Integer, URI, Process>> getExternalWorkerLauncher(String catalogName, String prestoServerPath, OptionalInt port, int cacheMaxSize, Optional<String> remoteFunctionServerUds, Boolean failOnNestedLoopJoin, boolean isCoordinatorSidecarEnabled)
-    {
         return
                 Optional.of((workerIndex, discoveryUri) -> {
                     try {
@@ -567,7 +562,7 @@ public class PrestoNativeQueryRunnerUtils
                                 "presto.version=testversion%n" +
                                 "system-memory-gb=4%n" +
                                 "native-sidecar=true%n" +
-                                "http-server.http.port=%d", discoveryUri, port.orElse(0));
+                                "http-server.http.port=0", discoveryUri);
 
                         if (isCoordinatorSidecarEnabled) {
                             configProperties = format("%s%n" +
@@ -675,7 +670,7 @@ public class PrestoNativeQueryRunnerUtils
         Path catalogDirectoryPath = tempDirectoryPath.resolve("catalog");
         Files.createDirectory(catalogDirectoryPath);
 
-        return new ProcessBuilder(prestoServerPath)
+        return new ProcessBuilder(prestoServerPath, "--logtostderr=1", "--v=2")
                 .directory(tempDirectoryPath.toFile())
                 .redirectErrorStream(true)
                 .redirectOutput(ProcessBuilder.Redirect.to(tempDirectoryPath.resolve("sidecar.out").toFile()))
