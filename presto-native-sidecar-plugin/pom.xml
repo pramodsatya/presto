@@ -280,5 +280,11 @@
                 </configuration>
             </plugin>
         </plugins>
+        <!-- WILL IMPORTING AS A RESOURCE HELP? -->
+<!--        <resources>-->
+<!--            <resource>-->
+<!--                <directory>${project.parent.basedir}/presto-native-execution/_build/</directory>-->
+<!--            </resource>-->
+<!--        </resources>-->
     </build>
 </project>

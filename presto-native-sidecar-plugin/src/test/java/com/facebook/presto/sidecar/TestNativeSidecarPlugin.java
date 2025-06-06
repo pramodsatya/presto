@@ -45,6 +45,7 @@ public class TestNativeSidecarPlugin
 {
     private static final String REGEX_FUNCTION_NAMESPACE = "native.default.*";
     private static final String REGEX_SESSION_NAMESPACE = "Native Execution only.*";
+    private static final String REGEX_DYNAMIC_FUNCTION_NAME = ".*\\bdynamic\\b.*";
 
     @Override
     protected void createTables()
@@ -127,6 +128,25 @@ public class TestNativeSidecarPlugin
                 continue;
             }
             fail(format("No namespace match found for row: %s", row));
+        }
+    }
+    @Test
+    public void testDynamicLibraryShowFunctions()
+    {
+        @Language("SQL") String sql = "SHOW FUNCTIONS";
+        MaterializedResult actualResult = computeActual(sql);
+        List<MaterializedRow> actualRows = actualResult.getMaterializedRows();
+        int numExpected = 1;
+        int numFound = 0;
+        for (MaterializedRow actualRow : actualRows) {
+            List<Object> row = actualRow.getFields();
+            String functionName = row.get(0).toString();
+            if (Pattern.matches(REGEX_DYNAMIC_FUNCTION_NAME, functionName)) {
+                numFound++;
+            }
+        }
+        if(numExpected != numFound) {
+            fail(format("Expected %d functions but found %d functions", numExpected, numFound));
         }
     }
 
