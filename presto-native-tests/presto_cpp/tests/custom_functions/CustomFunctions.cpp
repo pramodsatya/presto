@@ -92,7 +92,7 @@ extern "C" {
           custom::functionRegistry::CustomAdd,
           int64_t,
           int64_t,
-          int64_t>("dynamic_custom_add");
+          int64_t>("dynamic_custom_add", "custom_add");
 
       facebook::presto::registerPrestoFunction<
           custom::functionRegistry::SumArray,
