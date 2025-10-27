@@ -47,6 +47,7 @@ import static com.facebook.presto.common.type.StandardTypes.DECIMAL;
 import static com.facebook.presto.common.type.StandardTypes.DOUBLE;
 import static com.facebook.presto.common.type.StandardTypes.GEOMETRY;
 import static com.facebook.presto.common.type.StandardTypes.HYPER_LOG_LOG;
+import static com.facebook.presto.common.type.StandardTypes.P4_HYPER_LOG_LOG;
 import static com.facebook.presto.common.type.StandardTypes.INTEGER;
 import static com.facebook.presto.common.type.StandardTypes.INTERVAL_DAY_TO_SECOND;
 import static com.facebook.presto.common.type.StandardTypes.INTERVAL_YEAR_TO_MONTH;
@@ -90,6 +91,7 @@ public class NativeTypeManager
                     DOUBLE,
                     SMALLINT,
                     HYPER_LOG_LOG,
+                    P4_HYPER_LOG_LOG,
                     JSON,
                     TIMESTAMP_WITH_TIME_ZONE,
                     UUID,
