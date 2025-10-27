@@ -201,7 +201,7 @@ public final class Signature
         return new TypeVariableConstraint(name, false, true, null, false);
     }
 
-    public static TypeVariableConstraint nonDecimalNumericTypeParameter(String name)
+    public static TypeVariableConstraint numericTypeParameter(String name)
     {
         return new TypeVariableConstraint(name, false, false, null, true);
     }

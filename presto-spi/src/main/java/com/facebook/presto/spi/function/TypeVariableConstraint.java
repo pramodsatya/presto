@@ -33,7 +33,7 @@ public class TypeVariableConstraint
     private final boolean comparableRequired;
     private final boolean orderableRequired;
     private final String variadicBound;
-    private final boolean nonDecimalNumericRequired;
+    private final boolean numericRequired;
 
     @ThriftConstructor
     @JsonCreator
@@ -42,13 +42,13 @@ public class TypeVariableConstraint
             @JsonProperty("comparableRequired") boolean comparableRequired,
             @JsonProperty("orderableRequired") boolean orderableRequired,
             @JsonProperty("variadicBound") @Nullable String variadicBound,
-            @JsonProperty("nonDecimalNumericRequired") boolean nonDecimalNumericRequired)
+            @JsonProperty("numericRequired") boolean numericRequired)
     {
         this.name = name;
         this.comparableRequired = comparableRequired;
         this.orderableRequired = orderableRequired;
         this.variadicBound = (Objects.equals(variadicBound, "")) ? null : variadicBound;
-        this.nonDecimalNumericRequired = nonDecimalNumericRequired;
+        this.numericRequired = numericRequired;
     }
 
     @ThriftField(1)
@@ -81,9 +81,9 @@ public class TypeVariableConstraint
 
     @ThriftField(5)
     @JsonProperty
-    public boolean isNonDecimalNumericRequired()
+    public boolean isNumericRequired()
     {
-        return nonDecimalNumericRequired;
+        return numericRequired;
     }
 
     public boolean canBind(Type type)
@@ -97,7 +97,7 @@ public class TypeVariableConstraint
         if (variadicBound != null && !UNKNOWN.equals(type) && !variadicBound.equals(type.getTypeSignature().getStandardTypeSignature().getBase())) {
             return false;
         }
-        if (nonDecimalNumericRequired && !TypeUtils.isNonDecimalNumericType(type)) {
+        if (numericRequired && !TypeUtils.isNumericType(type)) {
             return false;
         }
         return true;
@@ -116,8 +116,8 @@ public class TypeVariableConstraint
         if (variadicBound != null) {
             value += ":" + variadicBound + "<*>";
         }
-        if (nonDecimalNumericRequired) {
-            value += ":nonDecimalNumeric";
+        if (numericRequired) {
+            value += ":numeric";
         }
         return value;
     }
@@ -134,7 +134,7 @@ public class TypeVariableConstraint
         TypeVariableConstraint that = (TypeVariableConstraint) o;
         return comparableRequired == that.comparableRequired &&
                 orderableRequired == that.orderableRequired &&
-                nonDecimalNumericRequired == that.nonDecimalNumericRequired &&
+                numericRequired == that.numericRequired &&
                 Objects.equals(name, that.name) &&
                 Objects.equals(variadicBound, that.variadicBound);
     }
@@ -142,6 +142,6 @@ public class TypeVariableConstraint
     @Override
     public int hashCode()
     {
-        return Objects.hash(name, comparableRequired, orderableRequired, variadicBound, nonDecimalNumericRequired);
+        return Objects.hash(name, comparableRequired, orderableRequired, variadicBound, numericRequired);
     }
 }

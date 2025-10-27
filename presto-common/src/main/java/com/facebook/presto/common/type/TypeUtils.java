@@ -32,6 +32,7 @@ import static com.facebook.presto.common.type.DoubleType.DOUBLE;
 import static com.facebook.presto.common.type.IntegerType.INTEGER;
 import static com.facebook.presto.common.type.RealType.REAL;
 import static com.facebook.presto.common.type.SmallintType.SMALLINT;
+import static com.facebook.presto.common.type.StandardTypes.DECIMAL;
 import static com.facebook.presto.common.type.TinyintType.TINYINT;
 import static java.lang.Double.doubleToLongBits;
 import static java.lang.Float.floatToIntBits;
@@ -52,12 +53,7 @@ public final class TypeUtils
 
     public static boolean isNumericType(Type type)
     {
-        return isNonDecimalNumericType(type) || type instanceof DecimalType;
-    }
-
-    public static boolean isNonDecimalNumericType(Type type)
-    {
-        return isExactNumericType(type) || isApproximateNumericType(type);
+        return isExactNumericType(type) || isApproximateNumericType(type) || type.equals(DECIMAL);
     }
 
     public static boolean isExactNumericType(Type type)

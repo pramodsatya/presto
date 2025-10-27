@@ -38,7 +38,7 @@ import static com.facebook.presto.common.type.StandardTypes.MAP;
 import static com.facebook.presto.common.type.TypeSignature.parseTypeSignature;
 import static com.facebook.presto.operator.aggregation.AggregationUtils.generateAggregationName;
 import static com.facebook.presto.spi.function.Signature.comparableTypeParameter;
-import static com.facebook.presto.spi.function.Signature.nonDecimalNumericTypeParameter;
+import static com.facebook.presto.spi.function.Signature.numericTypeParameter;
 import static com.facebook.presto.spi.function.aggregation.AggregationMetadata.ParameterMetadata;
 import static com.facebook.presto.spi.function.aggregation.AggregationMetadata.ParameterMetadata.ParameterType.INPUT_CHANNEL;
 import static com.facebook.presto.spi.function.aggregation.AggregationMetadata.ParameterMetadata.ParameterType.STATE;
@@ -58,7 +58,7 @@ public class MapUnionSumAggregation
     public MapUnionSumAggregation()
     {
         super(NAME,
-                ImmutableList.of(comparableTypeParameter("K"), nonDecimalNumericTypeParameter("V")),
+                ImmutableList.of(comparableTypeParameter("K"), numericTypeParameter("V")),
                 ImmutableList.of(),
                 parseTypeSignature("map<K,V>"),
                 ImmutableList.of(parseTypeSignature("map<K,V>")));

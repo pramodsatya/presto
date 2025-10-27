@@ -15,6 +15,7 @@ package com.facebook.presto.tests;
 
 import com.facebook.presto.Session;
 import com.facebook.presto.SystemSessionProperties;
+import com.facebook.presto.common.type.DecimalType;
 import com.facebook.presto.common.type.SqlTimestampWithTimeZone;
 import com.facebook.presto.metadata.FunctionListBuilder;
 import com.facebook.presto.spi.PrestoException;
@@ -34,6 +35,7 @@ import com.google.common.collect.Maps;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Multimaps;
 import com.google.common.collect.Ordering;
+import io.airlift.slice.Slice;
 import io.airlift.tpch.TpchTable;
 import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
 import org.intellij.lang.annotations.Language;
@@ -45,10 +47,7 @@ import org.testng.annotations.Test;
 import java.math.BigDecimal;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.regex.Pattern;
 import java.util.stream.IntStream;
 
@@ -95,6 +94,7 @@ import static com.facebook.presto.SystemSessionProperties.USE_DEFAULTS_FOR_CORRE
 import static com.facebook.presto.common.type.BigintType.BIGINT;
 import static com.facebook.presto.common.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.common.type.DecimalType.createDecimalType;
+import static com.facebook.presto.common.type.Decimals.encodeScaledValue;
 import static com.facebook.presto.common.type.DoubleType.DOUBLE;
 import static com.facebook.presto.common.type.IntegerType.INTEGER;
 import static com.facebook.presto.common.type.UnknownType.UNKNOWN;
@@ -6318,14 +6318,26 @@ public abstract class AbstractTestQueries
     }
 
     @Test
+    public void testMapUnionSumDecimalValues()
+    {
+        assertQuery(
+                "SELECT map_union_sum(" +
+                        "map(ARRAY['x', 'y'], ARRAY[CAST('1.24' AS DECIMAL(5,2)), CAST('123.45' AS DECIMAL(5,2))]), " +
+                        "map(ARRAY['x', 'y'], ARRAY[CAST('2.34' AS DECIMAL(5,2)), CAST('345.67' AS DECIMAL(5,2))]))",
+                "VALUES map(ARRAY['x', 'y'], ARRAY[CAST(DECIMAL '3.58' AS DECIMAL(5,2)), CAST(DECIMAL '469.12' AS DECIMAL(5,2))])");
+        assertQuery(
+                "SELECT map_union_sum(" +
+                        "map(ARRAY['x', 'y'], ARRAY[CAST(DECIMAL '12345678901234567890.12345' AS DECIMAL(30,5)), CAST(DECIMAL '5040002275472352559789877.48835' AS DECIMAL(30,5))]), " +
+                        "map(ARRAY['x', 'y'], ARRAY[CAST(DECIMAL '9876543210987654321.87655' AS DECIMAL(30,5)), CAST(DECIMAL '1087760802676113935896761.22334' AS DECIMAL(30,5))]))",
+                "VALUES map(ARRAY[1], ARRAY[CAST(DECIMAL '22222222112222222212.00000' AS DECIMAL(30,5)), CAST(DECIMAL '6127763078148466495686638.71169' AS DECIMAL(30,5))])");
+    }
+
+    @Test
     public void testInvalidMapUnionSum()
     {
         assertQueryFails(
                 "SELECT map_union_sum(x) from (select cast(MAP() as map<varchar, varchar>) x)",
                 "(?s).*line 1:8: Unexpected parameters \\(map\\(varchar,varchar\\)\\) for function (?:native.default.)?map_union_sum. Expected: (?:native.default.)?map_union_sum\\(map\\((K|k),(V|v)\\)\\) (K|k):comparable, (V|v):nonDecimalNumeric.*");
-        assertQueryFails(
-                "SELECT map_union_sum(x) from (select cast(MAP() as map<varchar, decimal(10,2)>) x)",
-                "(?s).*line 1:8: Unexpected parameters \\(map\\(varchar,decimal\\(10,2\\)\\)\\) for function (?:native.default.)?map_union_sum. Expected: (?:native.default.)?map_union_sum\\(map\\((K|k),(V|v)\\)\\) (K|k):comparable, (V|v):nonDecimalNumeric.*");
     }
 
     @Test
