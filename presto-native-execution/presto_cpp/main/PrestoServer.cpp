@@ -16,6 +16,7 @@
 #include <boost/asio/ip/host_name.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <glog/logging.h>
+#include <rapidsmpf/topology_discovery.hpp>
 #include "presto_cpp/main/Announcer.h"
 #include "presto_cpp/main/CoordinatorDiscoverer.h"
 #include "presto_cpp/main/PeriodicMemoryChecker.h"
@@ -190,6 +191,16 @@ void unregisterVeloxCudf() {
     PRESTO_SHUTDOWN_LOG(INFO) << "cuDF is unregistered.";
   }
 #endif
+}
+
+json getSystemTopology() {
+    json result;
+    rapidsmpf::TopologyDiscovery discovery;
+    if (!discovery.discover()) {
+        return result; 
+    }
+    
+    return discovery.get_topology();
 }
 
 } // namespace
@@ -419,6 +430,13 @@ void PrestoServer::run() {
                 proxygen::HTTP_HEADER_CONTENT_TYPE,
                 http::kMimeTypeApplicationJson)
             .sendWithEOM();
+      });
+  httpServer_->registerGet(
+      "/v1/info/topology",
+      [](proxygen::HTTPMessage* /*message*/,
+          const std::vector<std::unique_ptr<folly::IOBuf>>& /*body*/,
+          proxygen::ResponseHandler* downstream) {
+        http::sendOkResponse(downstream, getSystemTopology());
       });
 
   if (systemConfig->enableRuntimeMetricsCollection()) {

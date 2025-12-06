@@ -62,7 +62,7 @@ option(PRESTO_ENABLE_ABFS "Build ABFS support" OFF)
 option(PRESTO_ENABLE_PARQUET "Enable Parquet support" ON)
 
 # Forwards user input to VELOX_ENABLE_CUDF.
-option(PRESTO_ENABLE_CUDF "Enable cuDF support" OFF)
+option(PRESTO_ENABLE_CUDF "Enable cuDF support" ON)
 
 # Forwards user input to VELOX_ENABLE_REMOTE_FUNCTIONS.
 option(PRESTO_ENABLE_REMOTE_FUNCTIONS "Enable remote function support" OFF)
@@ -108,6 +108,9 @@ if(PRESTO_ENABLE_CUDF)
   enable_language(CUDA)
   # Determine CUDA_ARCHITECTURES automatically.
   cmake_policy(SET CMP0104 NEW)
+
+  # Add rapidsmpf dependency
+  find_package(rapidsmpf REQUIRED)
 endif()
 
 set(
