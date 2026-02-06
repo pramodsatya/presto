@@ -1192,4 +1192,11 @@ public abstract class AbstractTestQueriesNative
                 "SELECT a IN (VALUES 2), a FROM (VALUES (2)) t(a)",
                 "SELECT TRUE, 2");
     }
+
+    @Test
+    public void testTry2()
+    {
+        assertQuery("SELECT COALESCE(TRY(CAST(CONCAT('a', CAST(123 AS VARCHAR)) AS INTEGER)), 0)", "SELECT 0");
+        assertQuery("SELECT TRY(CAST('a' AS BIGINT))", "SELECT NULL");
+    }
 }

@@ -733,7 +733,7 @@ public class TestNativeSidecarPlugin
                         "   select CAST(null AS KHYPERLOGLOG) khll" +
                         ")");
     }
-    
+
     @Test
     public void testQueriesUsingBoundedVarchar()
     {

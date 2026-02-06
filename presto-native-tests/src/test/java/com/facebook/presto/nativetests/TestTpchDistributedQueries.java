@@ -52,7 +52,7 @@ public class TestTpchDistributedQueries
                 .setAddStorageFormatToPath(true)
                 .setUseThrift(true)
                 .setCoordinatorSidecarEnabled(sidecarEnabled)
-                .setPluginDirectory(sidecarEnabled ? Optional.of(getCustomFunctionsPluginDirectory().toString()) : Optional.empty())
+//                .setPluginDirectory(sidecarEnabled ? Optional.of(getCustomFunctionsPluginDirectory().toString()) : Optional.empty())
                 .build();
         if (sidecarEnabled) {
             setupNativeSidecarPlugin(queryRunner);
