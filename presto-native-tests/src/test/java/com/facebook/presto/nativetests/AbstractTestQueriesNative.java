@@ -65,6 +65,14 @@ public abstract class AbstractTestQueriesNative
         }
     }
 
+    @Override
+    protected Session getSession()
+    {
+        return Session.builder(super.getSession())
+                .setSystemProperty(EXPRESSION_OPTIMIZER_NAME, "native")
+                .build();
+    }
+
     @DataProvider(name = "use_default_literal_coalesce")
     public static Object[][] useDefaultLiteralCoalesce()
     {
