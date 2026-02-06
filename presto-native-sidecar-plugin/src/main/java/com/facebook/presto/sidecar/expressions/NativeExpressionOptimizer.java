@@ -33,6 +33,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
@@ -122,8 +123,87 @@ public class NativeExpressionOptimizer
         // Add back in the constants
         replacements.putAll(constants);
 
+        // For each replacement, detect the sidecar TRY-wrapping-fail pattern and replace it with a NULL constant immediately.
+        // Otherwise, recursively sanitize children to normalize any nested TRY(fail(...)) occurrences.  Do this in a single
+        // pass to avoid an unnecessary intermediate map.
+        Map<RowExpression, RowExpression> finalReplacements = new HashMap<>();
+        for (Map.Entry<RowExpression, RowExpression> entry : replacements.entrySet()) {
+            RowExpression optimized = entry.getValue();
+            RowExpression nullReplacement = detectTryWrappingFailAndReturnNull(optimized);
+            if (nullReplacement != null) {
+                finalReplacements.put(entry.getKey(), nullReplacement);
+            }
+            else {
+                finalReplacements.put(entry.getKey(), sanitizeTryFailInChildren(optimized));
+            }
+        }
+        replacements = finalReplacements;
+
         // Replace all the expressions in the original expression with the optimized expressions
         return toRowExpression(expression.getSourceLocation(), expression.accept(new ReplacingVisitor(replacements), null), expression.getType());
+    }
+
+    private RowExpression sanitizeTryFailInChildren(RowExpression expr)
+    {
+        if (expr == null) {
+            return null;
+        }
+
+        // Recursively sanitize children for CallExpression and SpecialFormExpression
+        if (expr instanceof CallExpression) {
+            CallExpression call = (CallExpression) expr;
+            List<RowExpression> newArgs = new ArrayList<>();
+            boolean changed = false;
+            for (RowExpression arg : call.getArguments()) {
+                // First check if this child itself is a TRY-wrapping-fail pattern
+                RowExpression nullReplacement = detectTryWrappingFailAndReturnNull(arg);
+                if (nullReplacement != null) {
+                    newArgs.add(nullReplacement);
+                    changed = true;
+                }
+                else {
+                    // Otherwise, recursively sanitize its children
+                    RowExpression sanitized = sanitizeTryFailInChildren(arg);
+                    newArgs.add(sanitized);
+                    if (sanitized != arg) {
+                        changed = true;
+                    }
+                }
+            }
+            if (changed) {
+                return new CallExpression(call.getSourceLocation(), call.getDisplayName(), call.getFunctionHandle(), call.getType(), newArgs);
+            }
+            return call;
+        }
+
+        if (expr instanceof SpecialFormExpression) {
+            SpecialFormExpression special = (SpecialFormExpression) expr;
+            List<RowExpression> newArgs = new ArrayList<>();
+            boolean changed = false;
+            for (RowExpression arg : special.getArguments()) {
+                // First check if this child itself is a TRY-wrapping-fail pattern
+                RowExpression nullReplacement = detectTryWrappingFailAndReturnNull(arg);
+                if (nullReplacement != null) {
+                    newArgs.add(nullReplacement);
+                    changed = true;
+                }
+                else {
+                    // Otherwise, recursively sanitize its children
+                    RowExpression sanitized = sanitizeTryFailInChildren(arg);
+                    newArgs.add(sanitized);
+                    if (sanitized != arg) {
+                        changed = true;
+                    }
+                }
+            }
+            if (changed) {
+                return new SpecialFormExpression(special.getSourceLocation(), special.getForm(), special.getType(), newArgs);
+            }
+            return special;
+        }
+
+        // Other node types are unchanged
+        return expr;
     }
 
     /**
@@ -390,5 +470,132 @@ public class NativeExpressionOptimizer
 
         // If it's not a RowExpression, we assume it's a literal value.
         return new ConstantExpression(sourceLocation, object, type);
+    }
+
+    private boolean isFailExpression(RowExpression expr)
+    {
+        if (expr == null) {
+            return false;
+        }
+        if (expr instanceof CallExpression) {
+            CallExpression call = (CallExpression) expr;
+            try {
+                FunctionMetadata metadata = functionMetadataManager.getFunctionMetadata(call.getFunctionHandle());
+                if ("fail".equalsIgnoreCase(metadata.getName().getObjectName())) {
+                    return true;
+                }
+            }
+            catch (RuntimeException ignored) {
+                // ignore
+            }
+            // fail(...) can be wrapped in a CAST, so consider cast(arg) where arg is fail(...)
+            try {
+                if (resolution.isCastFunction(call.getFunctionHandle()) && call.getArguments().size() == 1) {
+                    return isFailExpression(call.getArguments().get(0));
+                }
+            }
+            catch (RuntimeException ignored) {
+                // ignore
+            }
+        }
+        return false;
+    }
+
+    private boolean isTryWrappingFail(RowExpression expr)
+    {
+        if (!(expr instanceof CallExpression)) {
+            return false;
+        }
+        CallExpression call = (CallExpression) expr;
+        try {
+            FunctionMetadata metadata = functionMetadataManager.getFunctionMetadata(call.getFunctionHandle());
+            String name = metadata.getName().getObjectName();
+            if (!"try".equalsIgnoreCase(name) && !"internal$try".equals(name)) {
+                return false;
+            }
+        }
+        catch (RuntimeException ignored) {
+            return false;
+        }
+        if (call.getArguments().isEmpty()) {
+            return false;
+        }
+        RowExpression arg = call.getArguments().get(0);
+        // detect fail(...) or CAST(fail(...))
+        if (arg instanceof CallExpression) {
+            CallExpression inner = (CallExpression) arg;
+            try {
+                FunctionMetadata innerMeta = functionMetadataManager.getFunctionMetadata(inner.getFunctionHandle());
+                if ("fail".equalsIgnoreCase(innerMeta.getName().getObjectName())) {
+                    return true;
+                }
+            }
+            catch (RuntimeException ignored) {
+                // ignore
+            }
+            // if inner is a cast, check its argument
+            try {
+                if (resolution.isCastFunction(inner.getFunctionHandle()) && inner.getArguments().size() == 1) {
+                    RowExpression innerArg = inner.getArguments().get(0);
+                    if (innerArg instanceof CallExpression) {
+                        try {
+                            FunctionMetadata innerMost = functionMetadataManager.getFunctionMetadata(((CallExpression) innerArg).getFunctionHandle());
+                            if ("fail".equalsIgnoreCase(innerMost.getName().getObjectName())) {
+                                return true;
+                            }
+                        }
+                        catch (RuntimeException ignored) {
+                            // ignore
+                        }
+                    }
+                }
+            }
+            catch (RuntimeException ignored) {
+                // ignore
+            }
+        }
+        return false;
+    }
+
+    /**
+     * If the provided expression is a TRY(...) wrapping a fail(...) (possibly via a cast),
+     * return a NULL constant RowExpression of the same type.  Also handles the case where
+     * a SpecialFormExpression contains such a TRY as one of its arguments; in that case return
+     * a NULL constant of the special form's type.  Returns null if no replacement is needed.
+     */
+    private RowExpression detectTryWrappingFailAndReturnNull(RowExpression optimized)
+    {
+        if (optimized == null) {
+            return null;
+        }
+
+        if (optimized instanceof CallExpression) {
+            CallExpression call = (CallExpression) optimized;
+            try {
+                FunctionMetadata functionMetadata = functionMetadataManager.getFunctionMetadata(call.getFunctionHandle());
+                String functionName = functionMetadata.getName().getObjectName();
+                if ("try".equalsIgnoreCase(functionName) || "internal$try".equals(functionName)) {
+                    if (!call.getArguments().isEmpty() && isFailExpression(call.getArguments().get(0))) {
+                        return toRowExpression(call.getSourceLocation(), null, call.getType());
+                    }
+                }
+            }
+            catch (RuntimeException ignored) {
+                // If we can't resolve metadata, leave the expression unchanged
+            }
+            return null;
+        }
+
+        if (optimized instanceof SpecialFormExpression) {
+            SpecialFormExpression special = (SpecialFormExpression) optimized;
+            for (RowExpression child : special.getArguments()) {
+                if (isTryWrappingFail(child)) {
+                    return toRowExpression(special.getSourceLocation(), null, special.getType());
+                }
+            }
+            return null;
+        }
+
+        return null;
     }
 }
