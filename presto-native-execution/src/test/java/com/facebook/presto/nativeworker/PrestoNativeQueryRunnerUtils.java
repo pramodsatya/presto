@@ -676,6 +676,12 @@ public class PrestoNativeQueryRunnerUtils
                             configProperties = format("%s%n" + "char-n-to-varchar-implicit-cast=true%n", configProperties);
                         }
 
+                        // Enable cuDF
+                        configProperties = format("%s%n" + "cudf.enabled=true%n", configProperties);
+                        configProperties = format("%s%n" + "cudf.debug_enabled=true%n", configProperties);
+                        configProperties = format("%s%n" + "cudf.allow_cpu_fallback=true%n", configProperties);
+
+                        log.info("config.properties for worker %d:%n%s", workerIndex, configProperties);
                         Files.write(tempDirectoryPath.resolve("config.properties"), configProperties.getBytes());
                         Files.write(tempDirectoryPath.resolve("node.properties"),
                                 format("node.id=%s%n" +
