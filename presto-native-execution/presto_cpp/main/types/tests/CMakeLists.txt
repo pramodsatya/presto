@@ -35,6 +35,7 @@ target_link_libraries(
   presto_types
   velox_type_fbhive
   velox_hive_partition_function
+  velox_cudf_plan
 )
 
 add_executable(
@@ -99,6 +100,7 @@ target_link_libraries(
   velox_hive_iceberg_splitreader
   velox_tpch_connector
   velox_tpcds_connector
+  velox_cudf_plan
   GTest::gtest
   GTest::gtest_main
 )
