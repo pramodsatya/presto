@@ -11,20 +11,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "presto_cpp/main/sidecar/function/FunctionMetadata.h"
 #include "presto_cpp/main/common/Utils.h"
+#include "presto_cpp/main/sidecar/function/FunctionMetadata.h"
 #include "presto_cpp/main/sidecar/function/FunctionUtils.h"
 #include "presto_cpp/presto_protocol/core/presto_protocol_core.h"
 #include "velox/exec/Aggregate.h"
 #include "velox/exec/WindowFunction.h"
+#include "velox/experimental/cudf/exec/CudfHashAggregation.h"
+#include "velox/experimental/cudf/expression/ExpressionEvaluator.h"
 #include "velox/expression/SimpleFunctionRegistry.h"
 #include "velox/functions/FunctionRegistry.h"
 
 using namespace facebook::velox;
 using namespace facebook::velox::exec;
+using namespace facebook::velox::cudf_velox;
 using namespace facebook::presto::function_utils;
 
-namespace facebook::presto {
+namespace facebook::presto::cudf {
 namespace {
 
 std::optional<protocol::JsonBasedUdfFunctionMetadata> buildFunctionMetadata(
@@ -54,7 +57,8 @@ std::optional<protocol::JsonBasedUdfFunctionMetadata> buildFunctionMetadata(
   metadata.paramTypes = paramTypes;
   metadata.schema = schema;
   metadata.variableArity = signature.variableArity();
-  metadata.routineCharacteristics = getRoutineCharacteristics(name, kind);
+  // CUDF functions always provide defaults when not found in registry
+  metadata.routineCharacteristics = getRoutineCharacteristics(name, kind, true);
   metadata.typeVariableConstraints =
       std::make_shared<std::vector<protocol::TypeVariableConstraint>>(
           getTypeVariableConstraints(signature));
@@ -125,17 +129,45 @@ json buildAggregateMetadata(
   return j;
 }
 
-json buildWindowMetadata(
+// Overload for CUDF aggregate functions (using FunctionSignaturePtr)
+json buildAggregateMetadata(
     const std::string& name,
     const std::string& schema,
     const std::vector<FunctionSignaturePtr>& signatures) {
+  // CUDF aggregate functions don't require window function registration check
+  const std::vector<protocol::FunctionKind> kinds = {
+      protocol::FunctionKind::AGGREGATE};
   json j = json::array();
   json tj;
-  for (const auto& signature : signatures) {
-    if (auto functionMetadata = buildFunctionMetadata(
-            name, schema, protocol::FunctionKind::WINDOW, *signature)) {
-      protocol::to_json(tj, functionMetadata.value());
-      j.push_back(tj);
+  for (const auto& kind : kinds) {
+    for (const auto& signature : signatures) {
+      if (auto functionMetadata =
+              buildFunctionMetadata(name, schema, kind, *signature)) {
+        protocol::to_json(tj, functionMetadata.value());
+        j.push_back(tj);
+      }
+    }
+  }
+  return j;
+}
+
+// Overload for CUDF aggregate functions (using const FunctionSignature*)
+json buildAggregateMetadata(
+    const std::string& name,
+    const std::string& schema,
+    const std::vector<const FunctionSignature*>& signatures) {
+  // CUDF aggregate functions don't require window function registration check
+  const std::vector<protocol::FunctionKind> kinds = {
+      protocol::FunctionKind::AGGREGATE};
+  json j = json::array();
+  json tj;
+  for (const auto& kind : kinds) {
+    for (const auto& signature : signatures) {
+      if (auto functionMetadata =
+              buildFunctionMetadata(name, schema, kind, *signature)) {
+        protocol::to_json(tj, functionMetadata.value());
+        j.push_back(tj);
+      }
     }
   }
   return j;
@@ -146,68 +178,27 @@ json buildWindowMetadata(
 json getFunctionsMetadata(const std::optional<std::string>& catalog) {
   json j;
 
-  // Lambda to check if a function should be skipped based on catalog filter
-  auto skipCatalog = [&catalog](const std::string& functionCatalog) {
-    return catalog.has_value() && functionCatalog != catalog.value();
-  };
+  // Only return CUDF function metadata
 
-  // Get metadata for all registered scalar functions in velox.
-  const auto signatures = getFunctionSignatures();
-  static const std::unordered_set<std::string> kBlockList = {
-      "row_constructor", "in", "is_null"};
-  // Exclude aggregate companion functions (extract aggregate companion
-  // functions are registered as vector functions).
-  const auto aggregateFunctions = exec::aggregateFunctions().copy();
-  for (const auto& entry : signatures) {
-    const auto name = entry.first;
-    // Skip internal functions. They don't have any prefix.
-    if (kBlockList.count(name) != 0 ||
-        name.find("$internal$") != std::string::npos ||
-        getScalarMetadata(name).companionFunction) {
-      continue;
-    }
-
-    const auto parts = util::getFunctionNameParts(name);
-    if (skipCatalog(parts[0])) {
-      continue;
-    }
-    const auto schema = parts[1];
-    const auto function = parts[2];
-    j[function] = buildScalarMetadata(name, schema, entry.second);
-  }
-
-  // Get metadata for all registered aggregate functions in velox.
-  for (const auto& entry : aggregateFunctions) {
-    if (!aggregateFunctions.at(entry.first).metadata.companionFunction) {
-      const auto name = entry.first;
-      const auto parts = util::getFunctionNameParts(name);
-      if (skipCatalog(parts[0])) {
-        continue;
-      }
-      const auto schema = parts[1];
-      const auto function = parts[2];
-      j[function] =
-          buildAggregateMetadata(name, schema, entry.second.signatures);
+  // Get metadata for all registered CUDF scalar functions
+  const auto& cudfSignatures = getCudfFunctionSignatureMap();
+  for (const auto& [name, signatures] : cudfSignatures) {
+    // Use "cudf" as the schema and the function name as is
+    if (!signatures.empty()) {
+      j[name] = buildScalarMetadata(name, "cudf", signatures);
     }
   }
 
-  // Get metadata for all registered window functions in velox. Skip aggregates
-  // as they have been processed.
-  const auto& functions = exec::windowFunctions();
-  for (const auto& entry : functions) {
-    if (aggregateFunctions.count(entry.first) == 0) {
-      const auto name = entry.first;
-      const auto parts = util::getFunctionNameParts(entry.first);
-      if (skipCatalog(parts[0])) {
-        continue;
-      }
-      const auto schema = parts[1];
-      const auto function = parts[2];
-      j[function] = buildWindowMetadata(name, schema, entry.second.signatures);
+  // Get metadata for all registered CUDF aggregate functions
+  const auto& cudfAggSignatures = getCudfAggregationFunctionSignatureMap();
+  for (const auto& [name, signatures] : cudfAggSignatures) {
+    // Use "cudf" as the schema and the function name as is
+    if (!signatures.empty()) {
+      j[name] = buildAggregateMetadata(name, "cudf", signatures);
     }
   }
 
   return j;
 }
 
-} // namespace facebook::presto
+} // namespace facebook::presto::cudf

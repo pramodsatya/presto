@@ -14,14 +14,18 @@
 #include <gtest/gtest.h>
 
 #include "presto_cpp/main/common/tests/test_json.h"
-#include "presto_cpp/main/sidecar/function/FunctionMetadata.h"
+#include "presto_cpp/main/sidecar/function/CudfFunctionMetadata.h"
 #include "presto_cpp/main/types/tests/TestUtils.h"
+#include "velox/experimental/cudf/exec/CudfHashAggregation.h"
+#include "velox/experimental/cudf/expression/ExpressionEvaluator.h"
 #include "velox/functions/prestosql/aggregates/RegisterAggregateFunctions.h"
 #include "velox/functions/prestosql/registration/RegistrationFunctions.h"
 #include "velox/functions/prestosql/window/WindowFunctionsRegistration.h"
 
 using namespace facebook::velox;
-using namespace facebook::presto;
+using namespace facebook::presto::cudf;
+using namespace facebook::velox::cudf_velox;
+using namespace facebook::presto::test::utils;
 
 using json = nlohmann::json;
 
@@ -33,6 +37,10 @@ class FunctionMetadataTest : public ::testing::Test {
     aggregate::prestosql::registerAllAggregateFunctions(kPrestoDefaultPrefix);
     window::prestosql::registerAllWindowFunctions(kPrestoDefaultPrefix);
     functions::prestosql::registerAllScalarFunctions(kPrestoDefaultPrefix);
+    // Register CUDF builtin functions with a prefix
+    registerBuiltinFunctions("cudf.");
+    // Register CUDF builtin aggregation functions
+    registerStepAwareBuiltinAggregationFunctions("cudf.");
   }
 
   void SetUp() override {
@@ -66,8 +74,8 @@ class FunctionMetadataTest : public ::testing::Test {
     json::array_t metadataList = functionMetadata_.at(name);
     EXPECT_EQ(metadataList.size(), expectedSize);
     std::string expectedStr = slurp(
-        test::utils::getDataPath(
-            "/github/presto-trunk/presto-native-execution/presto_cpp/main/functions/tests/data/",
+        facebook::presto::test::utils::getDataPath(
+            "/github/presto-trunk/presto-native-execution/presto_cpp/main/sidecar/function/tests/data/",
             expectedFile));
     auto expected = json::parse(expectedStr);
 
@@ -82,73 +90,31 @@ class FunctionMetadataTest : public ::testing::Test {
   json functionMetadata_;
 };
 
-TEST_F(FunctionMetadataTest, approxMostFrequent) {
-  testFunction("approx_most_frequent", "ApproxMostFrequent.json", 7);
+// Tests for CUDF scalar functions
+TEST_F(FunctionMetadataTest, cudfCardinality) {
+  // Test CUDF cardinality function
+  testFunction("cudf.cardinality", "CudfCardinality.json", 1);
 }
 
-TEST_F(FunctionMetadataTest, arrayFrequency) {
-  testFunction("array_frequency", "ArrayFrequency.json", 10);
+// Tests for CUDF aggregate functions
+TEST_F(FunctionMetadataTest, cudfSum) {
+  // Test CUDF sum aggregate function
+  testFunction("cudf.sum", "CudfSum.json", 6);
 }
 
-TEST_F(FunctionMetadataTest, combinations) {
-  testFunction("combinations", "Combinations.json", 11);
-}
-
-TEST_F(FunctionMetadataTest, covarSamp) {
-  testFunction("covar_samp", "CovarSamp.json", 2);
-}
-
-TEST_F(FunctionMetadataTest, elementAt) {
-  testFunction("element_at", "ElementAt.json", 3);
-}
-
-TEST_F(FunctionMetadataTest, greatest) {
-  testFunction("greatest", "Greatest.json", 15);
-}
-
-TEST_F(FunctionMetadataTest, lead) {
-  testFunction("lead", "Lead.json", 3);
-}
-
-TEST_F(FunctionMetadataTest, mod) {
-  testFunction("mod", "Mod.json", 7);
-}
-
-TEST_F(FunctionMetadataTest, ntile) {
-  testFunction("ntile", "Ntile.json", 1);
-}
-
-TEST_F(FunctionMetadataTest, setAgg) {
-  testFunction("set_agg", "SetAgg.json", 1);
-}
-
-TEST_F(FunctionMetadataTest, stddevSamp) {
-  testFunction("stddev_samp", "StddevSamp.json", 5);
-}
-
-TEST_F(FunctionMetadataTest, transformKeys) {
-  testFunction("transform_keys", "TransformKeys.json", 1);
-}
-
-TEST_F(FunctionMetadataTest, variance) {
-  testFunction("variance", "Variance.json", 5);
-}
-
-TEST_F(FunctionMetadataTest, catalog) {
-  // Test with the "presto" catalog that is registered in SetUpTestSuite
-  std::string catalog = "presto";
-  auto metadata = getFunctionsMetadata(catalog);
-
+// Test that metadata is returned as a JSON object
+TEST_F(FunctionMetadataTest, cudfMetadataStructure) {
   // The result should be a JSON object with function names as keys
-  ASSERT_TRUE(metadata.is_object());
-  ASSERT_FALSE(metadata.empty());
+  ASSERT_TRUE(functionMetadata_.is_object());
+  ASSERT_FALSE(functionMetadata_.empty());
 
-  // Verify that common functions are present
-  ASSERT_TRUE(metadata.contains("abs"));
-  ASSERT_TRUE(metadata.contains("mod"));
+  // Verify that CUDF functions are present
+  ASSERT_TRUE(functionMetadata_.contains("cudf.cardinality"));
+  ASSERT_TRUE(functionMetadata_.contains("cudf.sum"));
 
   // Each function should have an array of signatures
-  for (auto it = metadata.begin(); it != metadata.end(); ++it) {
+  for (auto it = functionMetadata_.begin(); it != functionMetadata_.end();
+       ++it) {
     ASSERT_TRUE(it.value().is_array()) << "Function: " << it.key();
     ASSERT_FALSE(it.value().empty()) << "Function: " << it.key();
 
@@ -160,17 +126,8 @@ TEST_F(FunctionMetadataTest, catalog) {
       ASSERT_TRUE(signature.contains("functionKind"))
           << "Function: " << it.key();
 
-      // Schema should be "default" since we registered with "presto.default."
-      // prefix
-      EXPECT_EQ(signature["schema"], "default") << "Function: " << it.key();
+      // Schema should be "cudf"
+      EXPECT_EQ(signature["schema"], "cudf") << "Function: " << it.key();
     }
   }
-}
-
-TEST_F(FunctionMetadataTest, nonExistentCatalog) {
-  auto metadata = getFunctionsMetadata("nonexistent");
-
-  // When no functions match, it returns a null JSON value or empty object
-  // The default json() constructor creates a null value
-  ASSERT_TRUE(metadata.is_null() || (metadata.is_object() && metadata.empty()));
 }
