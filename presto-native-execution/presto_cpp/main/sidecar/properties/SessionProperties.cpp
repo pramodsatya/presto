@@ -30,17 +30,6 @@ SessionProperties* SessionProperties::instance() {
   return instance.get();
 }
 
-void SessionProperties::addSessionProperty(
-    const std::string& name,
-    const std::string& description,
-    const TypePtr& type,
-    bool isHidden,
-    const std::optional<std::string> veloxConfig,
-    const std::string& defaultValue) {
-  sessionProperties_[name] = std::make_shared<SessionProperty>(
-      name, description, type->toString(), isHidden, veloxConfig, defaultValue);
-}
-
 // List of native session properties is kept as the source of truth here.
 SessionProperties::SessionProperties() {
   using velox::core::QueryConfig;
@@ -630,26 +619,6 @@ SessionProperties::SessionProperties() {
       false,
       QueryConfig::kAggregationCompactionUnusedMemoryRatio,
       std::to_string(c.aggregationCompactionUnusedMemoryRatio()));
-}
-
-const std::string SessionProperties::toVeloxConfig(
-    const std::string& name) const {
-  auto it = sessionProperties_.find(name);
-  if (it != sessionProperties_.end() &&
-      it->second->getVeloxConfig().has_value()) {
-    return it->second->getVeloxConfig().value();
-  }
-  return name;
-}
-
-json SessionProperties::serialize() const {
-  json j = json::array();
-  json tj;
-  for (const auto& sessionProperty : sessionProperties_) {
-    protocol::to_json(tj, sessionProperty.second->getMetadata());
-    j.push_back(tj);
-  }
-  return j;
 }
 
 bool SessionProperties::useVeloxGeospatialJoin() const {

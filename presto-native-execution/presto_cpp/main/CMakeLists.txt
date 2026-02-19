@@ -64,6 +64,7 @@ target_link_libraries(
   presto_http
   presto_operators
   presto_session_properties
+  presto_cudf_session_properties
   presto_velox_plan_conversion
   presto_hive_functions
   velox_abfs
