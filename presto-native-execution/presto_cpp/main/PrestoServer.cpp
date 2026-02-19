@@ -42,7 +42,9 @@
 #include "presto_cpp/main/operators/ShuffleExchangeSource.h"
 #include "presto_cpp/main/operators/ShuffleRead.h"
 #include "presto_cpp/main/operators/ShuffleWrite.h"
+#include "presto_cpp/main/sidecar/function/CudfFunctionMetadata.h"
 #include "presto_cpp/main/sidecar/function/FunctionMetadata.h"
+#include "presto_cpp/main/sidecar/properties/CudfSessionProperties.h"
 #include "presto_cpp/main/sidecar/properties/SessionProperties.h"
 #include "presto_cpp/main/types/ExpressionOptimizer.h"
 #include "presto_cpp/main/types/PrestoToVeloxQueryPlan.h"
@@ -1774,32 +1776,58 @@ void PrestoServer::handleGracefulShutdown(
 
 void PrestoServer::registerSidecarEndpoints() {
   VELOX_CHECK(httpServer_);
+
+  // Get execution mode from config
+  auto systemConfig = SystemConfig::instance();
+  std::string executionMode = systemConfig->executionMode();
+
   httpServer_->registerGet(
       "/v1/properties/session",
-      [this](
+      [executionMode](
           proxygen::HTTPMessage* /*message*/,
           const std::vector<std::unique_ptr<folly::IOBuf>>& /*body*/,
           proxygen::ResponseHandler* downstream) {
-        const auto* sessionProperties = SessionProperties::instance();
-        http::sendOkResponse(downstream, sessionProperties->serialize());
+        if (executionMode == "cudf") {
+          const auto* sessionProperties =
+              facebook::presto::cudf::CudfSessionProperties::instance();
+          http::sendOkResponse(downstream, sessionProperties->serialize());
+        } else {
+          const auto* sessionProperties = SessionProperties::instance();
+          http::sendOkResponse(downstream, sessionProperties->serialize());
+        }
       });
+
   httpServer_->registerGet(
       "/v1/functions",
-      [](proxygen::HTTPMessage* /*message*/,
-         const std::vector<std::unique_ptr<folly::IOBuf>>& /*body*/,
-         proxygen::ResponseHandler* downstream) {
-        http::sendOkResponse(downstream, getFunctionsMetadata());
+      [executionMode](
+          proxygen::HTTPMessage* /*message*/,
+          const std::vector<std::unique_ptr<folly::IOBuf>>& /*body*/,
+          proxygen::ResponseHandler* downstream) {
+        if (executionMode == "cudf") {
+          http::sendOkResponse(
+              downstream, facebook::presto::cudf::getFunctionsMetadata());
+        } else {
+          http::sendOkResponse(downstream, getFunctionsMetadata());
+        }
       });
+
   httpServer_->registerGet(
       R"(/v1/functions/([^/]+))",
-      [](proxygen::HTTPMessage* /*message*/,
-         const std::vector<std::string>& pathMatch) {
+      [executionMode](
+          proxygen::HTTPMessage* /*message*/,
+          const std::vector<std::string>& pathMatch) {
         return new http::CallbackRequestHandler(
-            [catalog = pathMatch[1]](
+            [executionMode, catalog = pathMatch[1]](
                 proxygen::HTTPMessage* /*message*/,
                 std::vector<std::unique_ptr<folly::IOBuf>>& /*body*/,
                 proxygen::ResponseHandler* downstream) {
-              http::sendOkResponse(downstream, getFunctionsMetadata(catalog));
+              if (executionMode == "cudf") {
+                http::sendOkResponse(
+                    downstream,
+                    facebook::presto::cudf::getFunctionsMetadata(catalog));
+              } else {
+                http::sendOkResponse(downstream, getFunctionsMetadata(catalog));
+              }
             });
       });
   httpServer_->registerPost(
