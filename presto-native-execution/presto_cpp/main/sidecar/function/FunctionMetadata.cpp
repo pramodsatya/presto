@@ -13,6 +13,7 @@
  */
 #include "presto_cpp/main/sidecar/function/FunctionMetadata.h"
 #include "presto_cpp/main/common/Utils.h"
+#include "presto_cpp/main/sidecar/function/FunctionMetadataProvider.h"
 #include "presto_cpp/main/sidecar/function/FunctionUtils.h"
 #include "presto_cpp/presto_protocol/core/presto_protocol_core.h"
 #include "velox/exec/Aggregate.h"
@@ -20,194 +21,76 @@
 #include "velox/expression/SimpleFunctionRegistry.h"
 #include "velox/functions/FunctionRegistry.h"
 
-using namespace facebook::velox;
-using namespace facebook::velox::exec;
-using namespace facebook::presto::function_utils;
-
 namespace facebook::presto {
+
 namespace {
 
-std::optional<protocol::JsonBasedUdfFunctionMetadata> buildFunctionMetadata(
-    const std::string& name,
-    const std::string& schema,
-    const protocol::FunctionKind& kind,
-    const FunctionSignature& signature,
-    const AggregateFunctionSignaturePtr& aggregateSignature = nullptr) {
-  protocol::JsonBasedUdfFunctionMetadata metadata;
-  metadata.docString = name;
-  metadata.functionKind = kind;
-  if (!isValidPrestoType(signature.returnType())) {
-    return std::nullopt;
-  }
-  metadata.outputType =
-      boost::algorithm::to_lower_copy(signature.returnType().toString());
-
-  const auto& argumentTypes = signature.argumentTypes();
-  std::vector<std::string> paramTypes(argumentTypes.size());
-  for (auto i = 0; i < argumentTypes.size(); i++) {
-    if (!isValidPrestoType(argumentTypes.at(i))) {
-      return std::nullopt;
-    }
-    paramTypes[i] =
-        boost::algorithm::to_lower_copy(argumentTypes.at(i).toString());
-  }
-  metadata.paramTypes = paramTypes;
-  metadata.schema = schema;
-  metadata.variableArity = signature.variableArity();
-  metadata.routineCharacteristics = getRoutineCharacteristics(name, kind);
-  metadata.typeVariableConstraints =
-      std::make_shared<std::vector<protocol::TypeVariableConstraint>>(
-          getTypeVariableConstraints(signature));
-  metadata.longVariableConstraints =
-      std::make_shared<std::vector<protocol::LongVariableConstraint>>(
-          getLongVariableConstraints(signature));
-
-  if (aggregateSignature) {
-    metadata.aggregateMetadata =
-        std::make_shared<protocol::AggregationFunctionMetadata>(
-            getAggregationFunctionMetadata(name, *aggregateSignature));
-  }
-  return metadata;
-}
-
-json buildScalarMetadata(
-    const std::string& name,
-    const std::string& schema,
-    const std::vector<const FunctionSignature*>& signatures) {
-  json j = json::array();
-  json tj;
-  for (const auto& signature : signatures) {
-    if (auto functionMetadata = buildFunctionMetadata(
-            name, schema, protocol::FunctionKind::SCALAR, *signature)) {
-      protocol::to_json(tj, functionMetadata.value());
-      j.push_back(tj);
-    }
-  }
-  return j;
-}
-
-json buildAggregateMetadata(
-    const std::string& name,
-    const std::string& schema,
-    const std::vector<AggregateFunctionSignaturePtr>& signatures) {
-  // All aggregate functions can be used as window functions.
-  VELOX_USER_CHECK(
-      getWindowFunctionSignatures(name).has_value(),
-      "Aggregate function {} not registered as a window function",
-      name);
-
-  // The functions returned by this endpoint are stored as SqlInvokedFunction
-  // objects, with SqlFunctionId serving as the primary key. SqlFunctionId is
-  // derived from both the functionName and argumentTypes parameters. Returning
-  // the same function twice—once as an aggregate function and once as a window
-  // function introduces ambiguity, as functionKind is not a component of
-  // SqlFunctionId. For any aggregate function utilized as a window function,
-  // the function’s metadata can be obtained from the associated aggregate
-  // function implementation for further processing. For additional information,
-  // refer to the following: 	•
-  // https://github.com/prestodb/presto/blob/master/presto-spi/src/main/java/com/facebook/presto/spi/function/SqlFunctionId.java
-  //  •
-  //  https://github.com/prestodb/presto/blob/master/presto-spi/src/main/java/com/facebook/presto/spi/function/SqlInvokedFunction.java
-
-  const std::vector<protocol::FunctionKind> kinds = {
-      protocol::FunctionKind::AGGREGATE};
-  json j = json::array();
-  json tj;
-  for (const auto& kind : kinds) {
-    for (const auto& signature : signatures) {
-      if (auto functionMetadata = buildFunctionMetadata(
-              name, schema, kind, *signature, signature)) {
-        protocol::to_json(tj, functionMetadata.value());
-        j.push_back(tj);
+class CpuFunctionMetadataProvider : public FunctionMetadataProvider {
+ public:
+  CpuFunctionMetadataProvider() {
+    const auto signatures = facebook::velox::exec::getFunctionSignatures();
+    for (const auto& entry : signatures) {
+      const auto metadata = facebook::presto::util::getScalarMetadata(entry.first);
+      std::vector<ScalarFunctionEntry> entries;
+      entries.reserve(entry.second.size());
+      for (const auto* sig : entry.second) {
+        entries.push_back(ScalarFunctionEntry{metadata, sig});
       }
+      scalarFunctions_[entry.first] = std::move(entries);
     }
-  }
-  return j;
-}
 
-json buildWindowMetadata(
-    const std::string& name,
-    const std::string& schema,
-    const std::vector<FunctionSignaturePtr>& signatures) {
-  json j = json::array();
-  json tj;
-  for (const auto& signature : signatures) {
-    if (auto functionMetadata = buildFunctionMetadata(
-            name, schema, protocol::FunctionKind::WINDOW, *signature)) {
-      protocol::to_json(tj, functionMetadata.value());
-      j.push_back(tj);
+    const auto aggregateFunctions = facebook::velox::exec::aggregateFunctions().copy();
+    for (const auto& entry : aggregateFunctions) {
+      if (entry.second.metadata.companionFunction) {
+        continue;
+      }
+      aggregateFunctions_[entry.first] = entry.second.signatures;
     }
+
+    windowFunctions_ = facebook::velox::exec::windowFunctions();
   }
-  return j;
-}
+
+  const ScalarFunctionMap& scalarFunctions() const override {
+    return scalarFunctions_;
+  }
+
+  bool isScalarBlocked(const std::string& name) const override {
+    static const std::unordered_set<std::string> kBlockList = {
+        "row_constructor", "in", "is_null"};
+    if (kBlockList.count(name) != 0 ||
+        name.find("$internal$") != std::string::npos) {
+      return true;
+    }
+    const auto it = scalarFunctions_.find(name);
+    return it != scalarFunctions_.end() &&
+        !it->second.empty() &&
+        it->second.front().metadata.companionFunction;
+  }
+
+  const AggregateFunctionMap& aggregateFunctions() const override {
+    return aggregateFunctions_;
+  }
+
+  const WindowFunctionMap& windowFunctions() const override {
+    return windowFunctions_;
+  }
+
+  util::NameParts parseName(const std::string& name) const override {
+    const auto parts = facebook::presto::util::getFunctionNameParts(name);
+    return util::NameParts{parts[0], parts[1], parts[2], true};
+  }
+
+ private:
+  ScalarFunctionMap scalarFunctions_;
+  AggregateFunctionMap aggregateFunctions_;
+  WindowFunctionMap windowFunctions_;
+};
 
 } // namespace
 
 json getFunctionsMetadata(const std::optional<std::string>& catalog) {
-  json j;
-
-  // Lambda to check if a function should be skipped based on catalog filter
-  auto skipCatalog = [&catalog](const std::string& functionCatalog) {
-    return catalog.has_value() && functionCatalog != catalog.value();
-  };
-
-  // Get metadata for all registered scalar functions in velox.
-  const auto signatures = getFunctionSignatures();
-  static const std::unordered_set<std::string> kBlockList = {
-      "row_constructor", "in", "is_null"};
-  // Exclude aggregate companion functions (extract aggregate companion
-  // functions are registered as vector functions).
-  const auto aggregateFunctions = exec::aggregateFunctions().copy();
-  for (const auto& entry : signatures) {
-    const auto name = entry.first;
-    // Skip internal functions. They don't have any prefix.
-    if (kBlockList.count(name) != 0 ||
-        name.find("$internal$") != std::string::npos ||
-        getScalarMetadata(name).companionFunction) {
-      continue;
-    }
-
-    const auto parts = util::getFunctionNameParts(name);
-    if (skipCatalog(parts[0])) {
-      continue;
-    }
-    const auto schema = parts[1];
-    const auto function = parts[2];
-    j[function] = buildScalarMetadata(name, schema, entry.second);
-  }
-
-  // Get metadata for all registered aggregate functions in velox.
-  for (const auto& entry : aggregateFunctions) {
-    if (!aggregateFunctions.at(entry.first).metadata.companionFunction) {
-      const auto name = entry.first;
-      const auto parts = util::getFunctionNameParts(name);
-      if (skipCatalog(parts[0])) {
-        continue;
-      }
-      const auto schema = parts[1];
-      const auto function = parts[2];
-      j[function] =
-          buildAggregateMetadata(name, schema, entry.second.signatures);
-    }
-  }
-
-  // Get metadata for all registered window functions in velox. Skip aggregates
-  // as they have been processed.
-  const auto& functions = exec::windowFunctions();
-  for (const auto& entry : functions) {
-    if (aggregateFunctions.count(entry.first) == 0) {
-      const auto name = entry.first;
-      const auto parts = util::getFunctionNameParts(entry.first);
-      if (skipCatalog(parts[0])) {
-        continue;
-      }
-      const auto schema = parts[1];
-      const auto function = parts[2];
-      j[function] = buildWindowMetadata(name, schema, entry.second.signatures);
-    }
-  }
-
-  return j;
+  CpuFunctionMetadataProvider provider;
+  return provider.getFunctionsMetadata(catalog);
 }
 
 } // namespace facebook::presto

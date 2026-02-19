@@ -12,17 +12,13 @@
  * limitations under the License.
  */
 #include "presto_cpp/main/sidecar/properties/CudfSessionProperties.h"
+#include "presto_cpp/main/common/Utils.h"
 #include "velox/experimental/cudf/CudfConfig.h"
-
-using namespace facebook::velox;
 
 namespace facebook::presto::cudf {
 
-namespace {
-const std::string boolToString(bool value) {
-  return value ? "true" : "false";
-}
-} // namespace
+using facebook::presto::util::boolToString;
+using facebook::velox::cudf_velox::CudfConfig;
 
 CudfSessionProperties* CudfSessionProperties::instance() {
   static std::unique_ptr<CudfSessionProperties> instance =

@@ -13,23 +13,16 @@
  */
 
 #include "presto_cpp/main/sidecar/properties/SessionPropertiesProvider.h"
+#include "presto_cpp/main/common/Utils.h"
 #include "presto_cpp/presto_protocol/core/presto_protocol_core.h"
 #include <boost/algorithm/string.hpp>
 
-using namespace facebook::velox;
-
 namespace facebook::presto {
-
-namespace {
-const std::string boolToString(bool value) {
-  return value ? "true" : "false";
-}
-} // namespace
 
 void SessionPropertiesProvider::addSessionProperty(
     const std::string& name,
     const std::string& description,
-    const TypePtr& type,
+    const facebook::velox::TypePtr& type,
     bool isHidden,
     const std::optional<std::string> veloxConfig,
     const std::string& defaultValue) {

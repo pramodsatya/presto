@@ -22,7 +22,7 @@
 
 using json = nlohmann::json;
 
-namespace facebook::presto::function_utils {
+namespace facebook::presto::util {
 
 /// Check if the Velox type is supported in Presto.
 /// HUGEINT type is not supported in Presto.
@@ -42,16 +42,54 @@ const std::vector<protocol::TypeVariableConstraint> getTypeVariableConstraints(
 const std::vector<protocol::LongVariableConstraint> getLongVariableConstraints(
     const facebook::velox::exec::FunctionSignature& functionSignature);
 
-/// Get scalar function metadata, optionally providing default for CUDF
-/// functions.
+/// Get scalar function metadata.
 const facebook::velox::exec::VectorFunctionMetadata getScalarMetadata(
-    const std::string& name,
-    bool provideCudfDefaults = false);
+    const std::string& name);
 
 /// Get routine characteristics for a function.
 const protocol::RoutineCharacteristics getRoutineCharacteristics(
     const std::string& name,
-    const protocol::FunctionKind& kind,
-    bool provideCudfDefaults = false);
+    const protocol::FunctionKind& kind);
 
-} // namespace facebook::presto::function_utils
+/// Build UDF metadata for a single function signature.
+std::optional<protocol::JsonBasedUdfFunctionMetadata> buildFunctionMetadata(
+    const std::string& name,
+    const std::string& schema,
+    const protocol::FunctionKind& kind,
+    const facebook::velox::exec::FunctionSignature& signature,
+    const facebook::velox::exec::AggregateFunctionSignaturePtr& aggregateSignature = nullptr);
+
+/// Build scalar function metadata array.
+json buildScalarMetadata(
+    const std::string& name,
+    const std::string& schema,
+    const std::vector<const facebook::velox::exec::FunctionSignature*>& signatures);
+
+/// Build aggregate function metadata array (AggregateFunctionSignaturePtr).
+json buildAggregateMetadata(
+    const std::string& name,
+    const std::string& schema,
+    const std::vector<facebook::velox::exec::AggregateFunctionSignaturePtr>& signatures,
+    bool requireWindowRegistration);
+
+/// Build aggregate function metadata array (FunctionSignaturePtr).
+json buildAggregateMetadata(
+    const std::string& name,
+    const std::string& schema,
+    const std::vector<facebook::velox::exec::FunctionSignaturePtr>& signatures,
+    bool requireWindowRegistration);
+
+/// Build aggregate function metadata array (const FunctionSignature*).
+json buildAggregateMetadata(
+    const std::string& name,
+    const std::string& schema,
+    const std::vector<const facebook::velox::exec::FunctionSignature*>& signatures,
+    bool requireWindowRegistration);
+
+/// Build window function metadata array.
+json buildWindowMetadata(
+    const std::string& name,
+    const std::string& schema,
+    const std::vector<facebook::velox::exec::FunctionSignaturePtr>& signatures);
+
+} // namespace facebook::presto::util

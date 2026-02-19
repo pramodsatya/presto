@@ -20,23 +20,22 @@
 #include "velox/functions/prestosql/registration/RegistrationFunctions.h"
 #include "velox/functions/prestosql/window/WindowFunctionsRegistration.h"
 
-using namespace facebook::velox;
-using namespace facebook::presto;
-
 using json = nlohmann::json;
 
 static const std::string kPrestoDefaultPrefix = "presto.default.";
 
+namespace facebook::presto::test {
+
 class FunctionMetadataTest : public ::testing::Test {
  protected:
   static void SetUpTestSuite() {
-    aggregate::prestosql::registerAllAggregateFunctions(kPrestoDefaultPrefix);
-    window::prestosql::registerAllWindowFunctions(kPrestoDefaultPrefix);
-    functions::prestosql::registerAllScalarFunctions(kPrestoDefaultPrefix);
+    facebook::velox::aggregate::prestosql::registerAllAggregateFunctions(kPrestoDefaultPrefix);
+    facebook::velox::window::prestosql::registerAllWindowFunctions(kPrestoDefaultPrefix);
+    facebook::velox::functions::prestosql::registerAllScalarFunctions(kPrestoDefaultPrefix);
   }
 
   void SetUp() override {
-    functionMetadata_ = getFunctionsMetadata();
+    functionMetadata_ = facebook::presto::getFunctionsMetadata();
   }
 
   void sortMetadataList(json::array_t& list) {
@@ -65,8 +64,8 @@ class FunctionMetadataTest : public ::testing::Test {
       size_t expectedSize) {
     json::array_t metadataList = functionMetadata_.at(name);
     EXPECT_EQ(metadataList.size(), expectedSize);
-    std::string expectedStr = slurp(
-        test::utils::getDataPath(
+    std::string expectedStr = facebook::presto::slurp(
+        facebook::presto::test::utils::getDataPath(
             "/github/presto-trunk/presto-native-execution/presto_cpp/main/functions/tests/data/",
             expectedFile));
     auto expected = json::parse(expectedStr);
@@ -137,7 +136,7 @@ TEST_F(FunctionMetadataTest, variance) {
 TEST_F(FunctionMetadataTest, catalog) {
   // Test with the "presto" catalog that is registered in SetUpTestSuite
   std::string catalog = "presto";
-  auto metadata = getFunctionsMetadata(catalog);
+  auto metadata = facebook::presto::getFunctionsMetadata(catalog);
 
   // The result should be a JSON object with function names as keys
   ASSERT_TRUE(metadata.is_object());
@@ -168,9 +167,11 @@ TEST_F(FunctionMetadataTest, catalog) {
 }
 
 TEST_F(FunctionMetadataTest, nonExistentCatalog) {
-  auto metadata = getFunctionsMetadata("nonexistent");
+  auto metadata = facebook::presto::getFunctionsMetadata("nonexistent");
 
   // When no functions match, it returns a null JSON value or empty object
   // The default json() constructor creates a null value
   ASSERT_TRUE(metadata.is_null() || (metadata.is_object() && metadata.empty()));
 }
+
+} // namespace facebook::presto::test

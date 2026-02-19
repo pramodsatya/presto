@@ -1,5 +1,5 @@
 {
-  "cudf.cardinality": [
+  "cardinality": [
     {
       "docString": "cudf.cardinality",
       "functionKind": "SCALAR",

@@ -1,5 +1,5 @@
 {
-  "cudf.sum": [
+  "sum": [
     {
       "docString": "cudf.sum",
       "functionKind": "AGGREGATE",

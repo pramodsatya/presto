@@ -22,21 +22,27 @@
 #include "velox/functions/prestosql/registration/RegistrationFunctions.h"
 #include "velox/functions/prestosql/window/WindowFunctionsRegistration.h"
 
-using namespace facebook::velox;
-using namespace facebook::presto::cudf;
-using namespace facebook::velox::cudf_velox;
-using namespace facebook::presto::test::utils;
-
 using json = nlohmann::json;
 
 static const std::string kPrestoDefaultPrefix = "presto.default.";
 
+namespace facebook::presto::cudf::test {
+
+using facebook::presto::cudf::getFunctionsMetadata;
+using facebook::presto::test::utils::getDataPath;
+using facebook::presto::test::slurp;
+using facebook::velox::aggregate::prestosql::registerAllAggregateFunctions;
+using facebook::velox::cudf_velox::registerBuiltinFunctions;
+using facebook::velox::cudf_velox::registerStepAwareBuiltinAggregationFunctions;
+using facebook::velox::functions::prestosql::registerAllScalarFunctions;
+using facebook::velox::window::prestosql::registerAllWindowFunctions;
+
 class FunctionMetadataTest : public ::testing::Test {
  protected:
   static void SetUpTestSuite() {
-    aggregate::prestosql::registerAllAggregateFunctions(kPrestoDefaultPrefix);
-    window::prestosql::registerAllWindowFunctions(kPrestoDefaultPrefix);
-    functions::prestosql::registerAllScalarFunctions(kPrestoDefaultPrefix);
+    registerAllAggregateFunctions(kPrestoDefaultPrefix);
+    registerAllWindowFunctions(kPrestoDefaultPrefix);
+    registerAllScalarFunctions(kPrestoDefaultPrefix);
     // Register CUDF builtin functions with a prefix
     registerBuiltinFunctions("cudf.");
     // Register CUDF builtin aggregation functions
@@ -74,9 +80,9 @@ class FunctionMetadataTest : public ::testing::Test {
     json::array_t metadataList = functionMetadata_.at(name);
     EXPECT_EQ(metadataList.size(), expectedSize);
     std::string expectedStr = slurp(
-        facebook::presto::test::utils::getDataPath(
-            "/github/presto-trunk/presto-native-execution/presto_cpp/main/sidecar/function/tests/data/",
-            expectedFile));
+        getDataPath(
+          "/github/presto-trunk/presto-native-execution/presto_cpp/main/sidecar/function/tests/data/",
+          expectedFile));
     auto expected = json::parse(expectedStr);
 
     json::array_t expectedList = expected[name];
@@ -93,13 +99,13 @@ class FunctionMetadataTest : public ::testing::Test {
 // Tests for CUDF scalar functions
 TEST_F(FunctionMetadataTest, cudfCardinality) {
   // Test CUDF cardinality function
-  testFunction("cudf.cardinality", "CudfCardinality.json", 1);
+  testFunction("cardinality", "CudfCardinality.json", 1);
 }
 
 // Tests for CUDF aggregate functions
 TEST_F(FunctionMetadataTest, cudfSum) {
   // Test CUDF sum aggregate function
-  testFunction("cudf.sum", "CudfSum.json", 6);
+  testFunction("sum", "CudfSum.json", 6);
 }
 
 // Test that metadata is returned as a JSON object
@@ -109,8 +115,8 @@ TEST_F(FunctionMetadataTest, cudfMetadataStructure) {
   ASSERT_FALSE(functionMetadata_.empty());
 
   // Verify that CUDF functions are present
-  ASSERT_TRUE(functionMetadata_.contains("cudf.cardinality"));
-  ASSERT_TRUE(functionMetadata_.contains("cudf.sum"));
+  ASSERT_TRUE(functionMetadata_.contains("cardinality"));
+  ASSERT_TRUE(functionMetadata_.contains("sum"));
 
   // Each function should have an array of signatures
   for (auto it = functionMetadata_.begin(); it != functionMetadata_.end();
@@ -130,4 +136,5 @@ TEST_F(FunctionMetadataTest, cudfMetadataStructure) {
       EXPECT_EQ(signature["schema"], "cudf") << "Function: " << it.key();
     }
   }
+} // namespace facebook::presto::cudf::test
 }

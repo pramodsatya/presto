@@ -12,17 +12,12 @@
  * limitations under the License.
  */
 #include "presto_cpp/main/sidecar/properties/SessionProperties.h"
+#include "presto_cpp/main/common/Utils.h"
 #include "velox/core/QueryConfig.h"
-
-using namespace facebook::velox;
 
 namespace facebook::presto {
 
-namespace {
-const std::string boolToString(bool value) {
-  return value ? "true" : "false";
-}
-} // namespace
+using facebook::presto::util::boolToString;
 
 SessionProperties* SessionProperties::instance() {
   static std::unique_ptr<SessionProperties> instance =
