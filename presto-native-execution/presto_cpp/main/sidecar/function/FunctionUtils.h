@@ -22,7 +22,7 @@
 
 using json = nlohmann::json;
 
-namespace facebook::presto::function_utils {
+namespace facebook::presto {
 
 /// Check if the Velox type is supported in Presto.
 /// HUGEINT type is not supported in Presto.
@@ -42,16 +42,18 @@ const std::vector<protocol::TypeVariableConstraint> getTypeVariableConstraints(
 const std::vector<protocol::LongVariableConstraint> getLongVariableConstraints(
     const facebook::velox::exec::FunctionSignature& functionSignature);
 
-/// Get scalar function metadata, optionally providing default for CUDF
-/// functions.
-const facebook::velox::exec::VectorFunctionMetadata getScalarMetadata(
-    const std::string& name,
-    bool provideCudfDefaults = false);
-
-/// Get routine characteristics for a function.
+/// Get routine characteristics for a function given its optional metadata.
 const protocol::RoutineCharacteristics getRoutineCharacteristics(
-    const std::string& name,
     const protocol::FunctionKind& kind,
-    bool provideCudfDefaults = false);
+    const std::optional<facebook::velox::exec::VectorFunctionMetadata>& metadata);
+
+/// Build function metadata from signature and optional aggregate signature.
+std::optional<protocol::JsonBasedUdfFunctionMetadata> buildFunctionMetadata(
+    const std::string& name,
+    const std::string& schema,
+    const protocol::FunctionKind& kind,
+    const facebook::velox::exec::FunctionSignature& signature,
+    const std::optional<facebook::velox::exec::VectorFunctionMetadata>& scalarMetadata,
+    const facebook::velox::exec::AggregateFunctionSignaturePtr& aggregateSignature = nullptr);
 
 } // namespace facebook::presto::function_utils

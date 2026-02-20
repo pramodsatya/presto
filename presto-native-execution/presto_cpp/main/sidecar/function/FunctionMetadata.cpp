@@ -22,68 +22,28 @@
 
 using namespace facebook::velox;
 using namespace facebook::velox::exec;
-using namespace facebook::presto::function_utils;
 
 namespace facebook::presto {
 namespace {
 
-std::optional<protocol::JsonBasedUdfFunctionMetadata> buildFunctionMetadata(
-    const std::string& name,
-    const std::string& schema,
-    const protocol::FunctionKind& kind,
-    const FunctionSignature& signature,
-    const AggregateFunctionSignaturePtr& aggregateSignature = nullptr) {
-  protocol::JsonBasedUdfFunctionMetadata metadata;
-  metadata.docString = name;
-  metadata.functionKind = kind;
-  if (!isValidPrestoType(signature.returnType())) {
-    return std::nullopt;
+const exec::VectorFunctionMetadata getScalarMetadata(
+    const std::string& name) {
+  auto simpleFunctionMetadata =
+      exec::simpleFunctions().getFunctionSignaturesAndMetadata(name);
+  if (simpleFunctionMetadata.size()) {
+    // Functions like abs are registered as simple functions for primitive
+    // types, and as a vector function for complex types like DECIMAL. So do not
+    // throw an error if function metadata is not found in simple function
+    // signature map.
+    return simpleFunctionMetadata.back().first;
   }
-  metadata.outputType =
-      boost::algorithm::to_lower_copy(signature.returnType().toString());
 
-  const auto& argumentTypes = signature.argumentTypes();
-  std::vector<std::string> paramTypes(argumentTypes.size());
-  for (auto i = 0; i < argumentTypes.size(); i++) {
-    if (!isValidPrestoType(argumentTypes.at(i))) {
-      return std::nullopt;
-    }
-    paramTypes[i] =
-        boost::algorithm::to_lower_copy(argumentTypes.at(i).toString());
+  auto vectorFunctionMetadata = exec::getVectorFunctionMetadata(name);
+  if (vectorFunctionMetadata.has_value()) {
+    return vectorFunctionMetadata.value();
   }
-  metadata.paramTypes = paramTypes;
-  metadata.schema = schema;
-  metadata.variableArity = signature.variableArity();
-  metadata.routineCharacteristics = getRoutineCharacteristics(name, kind);
-  metadata.typeVariableConstraints =
-      std::make_shared<std::vector<protocol::TypeVariableConstraint>>(
-          getTypeVariableConstraints(signature));
-  metadata.longVariableConstraints =
-      std::make_shared<std::vector<protocol::LongVariableConstraint>>(
-          getLongVariableConstraints(signature));
 
-  if (aggregateSignature) {
-    metadata.aggregateMetadata =
-        std::make_shared<protocol::AggregationFunctionMetadata>(
-            getAggregationFunctionMetadata(name, *aggregateSignature));
-  }
-  return metadata;
-}
-
-json buildScalarMetadata(
-    const std::string& name,
-    const std::string& schema,
-    const std::vector<const FunctionSignature*>& signatures) {
-  json j = json::array();
-  json tj;
-  for (const auto& signature : signatures) {
-    if (auto functionMetadata = buildFunctionMetadata(
-            name, schema, protocol::FunctionKind::SCALAR, *signature)) {
-      protocol::to_json(tj, functionMetadata.value());
-      j.push_back(tj);
-    }
-  }
-  return j;
+  VELOX_UNREACHABLE("Metadata for function {} not found", name);
 }
 
 json buildAggregateMetadata(
@@ -116,7 +76,7 @@ json buildAggregateMetadata(
   for (const auto& kind : kinds) {
     for (const auto& signature : signatures) {
       if (auto functionMetadata = buildFunctionMetadata(
-              name, schema, kind, *signature, signature)) {
+              name, schema, kind, *signature, std::nullopt, signature)) {
         protocol::to_json(tj, functionMetadata.value());
         j.push_back(tj);
       }
@@ -133,7 +93,7 @@ json buildWindowMetadata(
   json tj;
   for (const auto& signature : signatures) {
     if (auto functionMetadata = buildFunctionMetadata(
-            name, schema, protocol::FunctionKind::WINDOW, *signature)) {
+            name, schema, protocol::FunctionKind::WINDOW, *signature, std::nullopt)) {
       protocol::to_json(tj, functionMetadata.value());
       j.push_back(tj);
     }
@@ -173,7 +133,7 @@ json getFunctionsMetadata(const std::optional<std::string>& catalog) {
     }
     const auto schema = parts[1];
     const auto function = parts[2];
-    j[function] = buildScalarMetadata(name, schema, entry.second);
+    j[function] = buildScalarMetadata(name, schema, entry.second, getScalarMetadata());
   }
 
   // Get metadata for all registered aggregate functions in velox.

@@ -135,6 +135,7 @@ public class PrestoNativeQueryRunnerUtils
         private boolean enableSsdCache;
         private boolean failOnNestedLoopJoin;
         private boolean implicitCastCharNToVarchar;
+        private boolean enableCudf;
         // External worker launcher is applicable only for the native hive query runner, since it depends on other
         // properties it should be created once all the other query runner configs are set. This variable indicates
         // whether the query runner returned by builder should use an external worker launcher, it will be true only
@@ -270,6 +271,12 @@ public class PrestoNativeQueryRunnerUtils
             return this;
         }
 
+        public HiveQueryRunnerBuilder setEnableCudf(boolean enableCudf)
+        {
+            this.enableCudf = enableCudf;
+            return this;
+        }
+
         public HiveQueryRunnerBuilder setExtraProperties(Map<String, String> extraProperties)
         {
             this.extraProperties.putAll(extraProperties);
@@ -294,7 +301,7 @@ public class PrestoNativeQueryRunnerUtils
             Optional<BiFunction<Integer, URI, Process>> externalWorkerLauncher = Optional.empty();
             if (this.useExternalWorkerLauncher) {
                 externalWorkerLauncher = getExternalWorkerLauncher("hive", "hive", serverBinary, cacheMaxSize, remoteFunctionServerUds,
-                        pluginDirectory, failOnNestedLoopJoin, coordinatorSidecarEnabled, builtInWorkerFunctionsEnabled, enableRuntimeMetricsCollection, enableSsdCache, implicitCastCharNToVarchar);
+                        pluginDirectory, failOnNestedLoopJoin, coordinatorSidecarEnabled, builtInWorkerFunctionsEnabled, enableRuntimeMetricsCollection, enableSsdCache, implicitCastCharNToVarchar, enableCudf);
             }
             return HiveQueryRunner.createQueryRunner(
                     ImmutableList.of(),
@@ -628,7 +635,8 @@ public class PrestoNativeQueryRunnerUtils
             boolean isBuiltInWorkerFunctionsEnabled,
             boolean enableRuntimeMetricsCollection,
             boolean enableSsdCache,
-            boolean implicitCastCharNToVarchar)
+            boolean implicitCastCharNToVarchar,
+            boolean enableCudf)
     {
         return
                 Optional.of((workerIndex, discoveryUri) -> {
@@ -666,6 +674,14 @@ public class PrestoNativeQueryRunnerUtils
                             configProperties = format("%s%n" +
                                     "async-cache-ssd-gb=1%n" +
                                     "async-cache-ssd-path=%s/%n", configProperties, ssdCacheDir);
+                        }
+
+                        if (enableCudf) {
+                            configProperties = format("%s%n" +
+                                    "execution-mode=gpu%n" +
+                                    "cudf.enabled=true%n" +
+                                    "cudf.debug_enabled=true%n" +
+                                    "cudf.allow_cpu_fallback=true%n", configProperties);
                         }
 
                         if (remoteFunctionServerUds.isPresent()) {
