@@ -72,6 +72,9 @@ public class NativeSidecarFunctionRegistryTool
                 .getUDFSignatureMap()
                 .entrySet()
                 .stream()
+            // Keep Presto's built-in concat overloads authoritative for coercion. Native concat signatures
+            // can bind decimal array/element concat as array(double), which changes query output types.
+            .filter(entry -> !entry.getKey().equalsIgnoreCase("concat"))
                 .flatMap(entry -> entry.getValue().stream()
                         .map(metaInfo -> WorkerFunctionUtil.createSqlInvokedFunction(entry.getKey(), metaInfo, "presto")))
                 .collect(toImmutableList());

@@ -46,6 +46,7 @@ import java.util.Set;
 import java.util.function.Function;
 
 import static com.facebook.presto.common.Utils.checkArgument;
+import static com.facebook.presto.common.type.StandardTypes.DECIMAL;
 import static com.facebook.presto.spi.relation.ExpressionOptimizer.Level.EVALUATED;
 import static com.facebook.presto.spi.relation.ExpressionOptimizer.Level.OPTIMIZED;
 import static com.facebook.presto.spi.relation.SpecialFormExpression.Form.COALESCE;
@@ -205,6 +206,13 @@ public class NativeExpressionOptimizer
             boolean allConstantFoldable = node.getArguments().stream()
                     .allMatch(this::canBeOptimized);
 
+            // Native sidecar currently serializes decimal constants in some compound expressions as floating-point
+            // values. Keep decimal-containing expression folding in Presto to preserve exact decimal materialization.
+            if (containsDecimalType(node)) {
+                visitNode(node, false);
+                return null;
+            }
+
             if (isScalarFunction && canBeEvaluated && allConstantFoldable) {
                 visitNode(node, true);
                 return null;
@@ -317,6 +325,18 @@ public class NativeExpressionOptimizer
         public List<RowExpression> getExpressionsToOptimize()
         {
             return ImmutableList.copyOf(expressionsToOptimize);
+        }
+
+        private static boolean containsDecimalType(RowExpression expression)
+        {
+            return containsDecimalType(expression.getType()) || expression.getChildren().stream()
+                    .anyMatch(CollectingVisitor::containsDecimalType);
+        }
+
+        private static boolean containsDecimalType(Type type)
+        {
+            return type.getTypeSignature().getBase().equalsIgnoreCase(DECIMAL) || type.getTypeParameters().stream()
+                    .anyMatch(CollectingVisitor::containsDecimalType);
         }
     }
 
