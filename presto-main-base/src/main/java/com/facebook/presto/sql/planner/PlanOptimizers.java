@@ -151,6 +151,7 @@ import com.facebook.presto.sql.planner.iterative.rule.RewriteExcludeColumnsFunct
 import com.facebook.presto.sql.planner.iterative.rule.RewriteFilterWithExternalFunctionToProject;
 import com.facebook.presto.sql.planner.iterative.rule.RewriteRowConstructorInToDisjunction;
 import com.facebook.presto.sql.planner.iterative.rule.RewriteRowExpressions;
+import com.facebook.presto.sql.planner.iterative.rule.RewriteUnmergeableFilterToFilter;
 import com.facebook.presto.sql.planner.iterative.rule.RewriteSpatialPartitioningAggregation;
 import com.facebook.presto.sql.planner.iterative.rule.RuntimeReorderJoinSides;
 import com.facebook.presto.sql.planner.iterative.rule.ScaledWriterRule;
@@ -1200,6 +1201,15 @@ public class PlanOptimizers
         builder.add(new MetadataDeleteOptimizer(metadata));
 
         builder.add(new RewriteWriterTarget(metadata, accessControl));
+
+        // Terminal pass: rewrite UnmergeableFilterNode back to FilterNode so execution planners (Java + native)
+        // never observe the marker type. Must run after every other optimizer.
+        builder.add(new IterativeOptimizer(
+                metadata,
+                ruleStats,
+                statsCalculator,
+                costCalculator,
+                ImmutableSet.of(new RewriteUnmergeableFilterToFilter())));
 
         // TODO: consider adding a formal final plan sanitization optimizer that prepares the plan for transmission/execution/logging
         // TODO: figure out how to improve the set flattening optimizer so that it can run at any point
