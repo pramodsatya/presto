@@ -54,6 +54,7 @@ import com.facebook.presto.spi.StandardErrorCode;
 import com.facebook.presto.spi.relation.ConstantExpression;
 import com.facebook.presto.spi.relation.ExpressionOptimizer;
 import com.facebook.presto.spi.relation.RowExpression;
+import com.facebook.presto.spi.relation.SpecialFormExpression;
 import com.facebook.presto.sql.TestingRowExpressionTranslator;
 import com.facebook.presto.sql.analyzer.FeaturesConfig;
 import com.facebook.presto.sql.planner.TypeProvider;
@@ -179,6 +180,50 @@ public abstract class AbstractTestNativeFunctions
     public void assertInvalidCast(@Language("SQL") String projection, @Language("RegExp") String message)
     {
         assertInvalidFunction(projection, INVALID_CAST_ARGUMENT, message);
+    }
+
+    // IP_PREFIX() returns IPPREFIX which is a ROW type in Velox. The expression optimizer
+    // serializes it as a ROW_CONSTRUCTOR SpecialFormExpression rather than a ConstantExpression.
+    // This helper unwraps the ROW_CONSTRUCTOR and reconstructs the "ip/prefix" string for comparison.
+    public void assertIpPrefixFunction(@Language("SQL") String projection, String expected)
+    {
+        RowExpression rowExpression = sqlToRowExpression(projection);
+        RowExpressionOptimizationResult optimizationResult = evaluate(rowExpression);
+        NativeSidecarFailureInfo failureInfo = optimizationResult.getExpressionFailureInfo();
+        assertNotNull(failureInfo);
+        assertTrue(failureInfo.getMessage() != null && failureInfo.getMessage().isEmpty(),
+                format("Expected success but got sidecar failure: %s", failureInfo));
+        RowExpression result = optimizationResult.getOptimizedExpression();
+        assertTrue(result instanceof SpecialFormExpression,
+                format("Expected SpecialFormExpression (ROW_CONSTRUCTOR) for IPPREFIX result but got %s", result.getClass().getSimpleName()));
+        SpecialFormExpression rowConstructor = (SpecialFormExpression) result;
+        assertEquals(rowConstructor.getForm(), SpecialFormExpression.Form.ROW_CONSTRUCTOR,
+                format("Expected ROW_CONSTRUCTOR form but got %s", rowConstructor.getForm()));
+        assertTrue(rowConstructor.getType() instanceof IpPrefixType,
+                format("Expected IPPREFIX return type but got %s", rowConstructor.getType()));
+
+        // arguments[0] is the IPADDRESS child (ConstantExpression with Slice value)
+        // arguments[1] is the prefix length child (ConstantExpression with Long value)
+        List<RowExpression> args = rowConstructor.getArguments();
+        assertEquals(args.size(), 2);
+        ConstantExpression ipArg = (ConstantExpression) args.get(0);
+        ConstantExpression prefixArg = (ConstantExpression) args.get(1);
+
+        Slice ipSlice = (Slice) ipArg.getValue();
+        String actual = toNativeValue(IPPREFIX, new ConstantExpression(
+                reconstructIpPrefixSlice(ipSlice, ((Long) prefixArg.getValue()).byteValue()),
+                IPPREFIX)).toString();
+        assertEquals(actual, expected,
+                format("IP prefix mismatch for expression: %s", projection));
+    }
+
+    private static Slice reconstructIpPrefixSlice(Slice ipAddressSlice, byte prefixLength)
+    {
+        // IpPrefixType stores 17 bytes: 16 bytes of IPv6 address + 1 byte prefix length
+        byte[] bytes = new byte[17];
+        arraycopy(ipAddressSlice.getBytes(), 0, bytes, 0, 16);
+        bytes[16] = prefixLength;
+        return wrappedBuffer(bytes);
     }
 
     private boolean typesEqualIgnoringVarcharParameters(Type actual, Type expected)
