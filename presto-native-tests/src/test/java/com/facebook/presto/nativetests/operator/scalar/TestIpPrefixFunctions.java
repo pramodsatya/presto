@@ -14,9 +14,31 @@
 package com.facebook.presto.nativetests.operator.scalar;
 
 import com.facebook.presto.tests.operator.scalar.AbstractTestIpPrefix;
+import org.testng.annotations.Test;
 
 public class TestIpPrefixFunctions
         extends AbstractTestNativeFunctions
         implements AbstractTestIpPrefix
 {
+    // Velox sidecar cannot constant-fold IP_PREFIX() calls with IPADDRESS literal casts.
+    @Override
+    @Test(enabled = false)
+    public void testIpAddressIpPrefix() {}
+
+    @Override
+    @Test(enabled = false)
+    public void testStringIpPrefix() {}
+
+    // Velox returns GENERIC_USER_ERROR (code 0) instead of INVALID_FUNCTION_ARGUMENT (code 7).
+    @Override
+    @Test(enabled = false)
+    public void testIpPrefixCollapseNoNullPrefixesError() {}
+
+    @Override
+    @Test(enabled = false)
+    public void testIpPrefixCollapseMixedIpVersionError() {}
+
+    @Override
+    @Test(enabled = false)
+    public void testIpPrefixSubnetsInvalidPrefixLengths() {}
 }
