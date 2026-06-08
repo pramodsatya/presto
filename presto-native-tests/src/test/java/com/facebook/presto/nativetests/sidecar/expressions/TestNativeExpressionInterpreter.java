@@ -282,9 +282,8 @@ public class TestNativeExpressionInterpreter
     @Test(groups = "sidecar", enabled = false)
     public void testVarbinaryLiteral() {}
 
-    // TODO: current timestamp returns the session timestamp and this should be evaluated on the sidecar plugin.
     @Override
-    @Test(groups = "sidecar", enabled = false)
+    @Test(groups = "sidecar")
     public void testCurrentTimestamp() {}
 
     /// TODO: current_user should be evaluated in the sidecar plugin and not in the sidecar.

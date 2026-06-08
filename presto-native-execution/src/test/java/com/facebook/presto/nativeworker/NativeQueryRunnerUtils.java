@@ -522,27 +522,20 @@ public class NativeQueryRunnerUtils
                 NativeSystemSessionPropertyProviderFactory.NAME,
                 ImmutableMap.copyOf(sidecarPluginConfig));
 
-        // Register native catalog for built-in functions
-        Map<String, String> nativeConfig = new HashMap<>(ImmutableMap.of(
+        Map<String, String> nativeFunctionConfig = new HashMap<>(ImmutableMap.of(
                 "supported-function-languages", "CPP",
                 "function-implementation-type", "CPP"));
-        nativeConfig.putAll(sidecarPluginConfig);
+        nativeFunctionConfig.putAll(sidecarPluginConfig);
+
         queryRunner.loadFunctionNamespaceManager(
                 NativeFunctionNamespaceManagerFactory.NAME,
                 "native",
-                ImmutableMap.copyOf(nativeConfig));
+                ImmutableMap.copyOf(nativeFunctionConfig));
 
-        // Register hive catalog for hive-specific functions.
-        // Note: The C++ PrestoServer registers hive functions only when a hive connector is present.
-        // Since tests always setup the hive connector, hive functions will be available.
-        Map<String, String> hiveConfig = new HashMap<>(ImmutableMap.of(
-                "supported-function-languages", "CPP",
-                "function-implementation-type", "CPP"));
-        hiveConfig.putAll(sidecarPluginConfig);
         queryRunner.loadFunctionNamespaceManager(
                 NativeFunctionNamespaceManagerFactory.NAME,
                 "hive",
-                ImmutableMap.copyOf(hiveConfig));
+                ImmutableMap.copyOf(nativeFunctionConfig));
 
         queryRunner.loadTypeManager(NativeTypeManagerFactory.NAME);
         queryRunner.loadPlanCheckerProviderManager("native", ImmutableMap.copyOf(sidecarPluginConfig));

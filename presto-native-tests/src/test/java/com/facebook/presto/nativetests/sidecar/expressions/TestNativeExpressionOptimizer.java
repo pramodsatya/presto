@@ -91,7 +91,7 @@ public class TestNativeExpressionOptimizer
                 "filter(transform(ARRAY[unbound_long, unbound_long2], x -> 2), x -> false)");
     }
 
-    @Test
+    @Test(groups = "sidecar")
     public void testSessionPropertiesPropagatingThroughOptimizer()
     {
         assertOptimizedEquals(
@@ -121,7 +121,7 @@ public class TestNativeExpressionOptimizer
                         .build());
     }
 
-    @Test
+    @Test(groups = "sidecar")
     public void testCurrentTimestamp()
     {
         ZoneId zone = ZoneId.of(TestingSession.DEFAULT_TIME_ZONE_KEY.getId());
