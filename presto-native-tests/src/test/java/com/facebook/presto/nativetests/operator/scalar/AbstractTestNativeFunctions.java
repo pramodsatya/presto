@@ -13,17 +13,10 @@
  */
 package com.facebook.presto.nativetests.operator.scalar;
 
-import com.facebook.airlift.bootstrap.Bootstrap;
-import com.facebook.airlift.json.JsonModule;
 import com.facebook.airlift.log.Logger;
-import com.facebook.drift.codec.guice.ThriftCodecModule;
 import com.facebook.presto.block.BlockAssertions;
-import com.facebook.presto.block.BlockJsonSerde;
 import com.facebook.presto.common.block.Block;
 import com.facebook.presto.common.block.BlockBuilder;
-import com.facebook.presto.common.block.BlockEncoding;
-import com.facebook.presto.common.block.BlockEncodingManager;
-import com.facebook.presto.common.block.BlockEncodingSerde;
 import com.facebook.presto.common.block.RowBlockBuilder;
 import com.facebook.presto.common.block.SingleRowBlockWriter;
 import com.facebook.presto.common.type.ArrayType;
@@ -35,39 +28,28 @@ import com.facebook.presto.common.type.MapType;
 import com.facebook.presto.common.type.RowType;
 import com.facebook.presto.common.type.SqlDecimal;
 import com.facebook.presto.common.type.Type;
-import com.facebook.presto.common.type.TypeManager;
-import com.facebook.presto.connector.ConnectorManager;
 import com.facebook.presto.metadata.FunctionAndTypeManager;
-import com.facebook.presto.metadata.HandleJsonModule;
 import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.metadata.MetadataManager;
 import com.facebook.presto.operator.scalar.FunctionAssertions;
-import com.facebook.presto.sidecar.ForSidecarInfo;
 import com.facebook.presto.sidecar.NativeSidecarFailureInfo;
 import com.facebook.presto.sidecar.NativeSidecarPluginQueryRunner;
-import com.facebook.presto.sidecar.expressions.ExpressionOptimizationRequest;
 import com.facebook.presto.sidecar.expressions.NativeSidecarExpressionInterpreter;
 import com.facebook.presto.sidecar.expressions.RowExpressionOptimizationResult;
 import com.facebook.presto.sidecar.expressions.TestNativeExpressionInterpreter;
-import com.facebook.presto.spi.NodeManager;
 import com.facebook.presto.spi.StandardErrorCode;
 import com.facebook.presto.spi.relation.ConstantExpression;
 import com.facebook.presto.spi.relation.ExpressionOptimizer;
 import com.facebook.presto.spi.relation.RowExpression;
 import com.facebook.presto.spi.relation.SpecialFormExpression;
 import com.facebook.presto.sql.TestingRowExpressionTranslator;
-import com.facebook.presto.sql.analyzer.FeaturesConfig;
 import com.facebook.presto.sql.planner.TypeProvider;
 import com.facebook.presto.sql.tree.Expression;
 import com.facebook.presto.tests.DistributedQueryRunner;
 import com.facebook.presto.tests.operator.scalar.TestFunctions;
-import com.facebook.presto.type.TypeDeserializer;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.InetAddresses;
-import com.google.inject.Injector;
-import com.google.inject.Module;
-import com.google.inject.Scopes;
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
 import org.intellij.lang.annotations.Language;
@@ -80,10 +62,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-import static com.facebook.airlift.configuration.ConfigBinder.configBinder;
-import static com.facebook.airlift.http.client.HttpClientBinder.httpClientBinder;
-import static com.facebook.airlift.json.JsonBinder.jsonBinder;
-import static com.facebook.airlift.json.JsonCodecBinder.jsonCodecBinder;
 import static com.facebook.presto.SessionTestUtils.TEST_SESSION;
 import static com.facebook.presto.common.type.IpPrefixType.IPPREFIX;
 import static com.facebook.presto.common.type.TypeUtils.writeNativeValue;
@@ -91,7 +69,6 @@ import static com.facebook.presto.spi.StandardErrorCode.INVALID_CAST_ARGUMENT;
 import static com.facebook.presto.spi.StandardErrorCode.INVALID_FUNCTION_ARGUMENT;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
 import static com.facebook.presto.testing.assertions.Assert.assertEquals;
-import static com.google.inject.multibindings.Multibinder.newSetBinder;
 import static io.airlift.slice.Slices.wrappedBuffer;
 import static java.lang.String.format;
 import static java.lang.System.arraycopy;
@@ -102,7 +79,7 @@ import static org.testng.Assert.assertTrue;
 public abstract class AbstractTestNativeFunctions
         implements TestFunctions
 {
-    private static final Logger log = Logger.get(TestNativeExpressionInterpreter.class);
+    private static final Logger log = Logger.get(AbstractTestNativeFunctions.class);
     public static final TypeProvider SYMBOL_TYPES = TypeProvider.viewOf(ImmutableMap.<String, Type>builder().build());
 
     private static volatile DistributedQueryRunner sharedQueryRunner;
@@ -118,13 +95,15 @@ public abstract class AbstractTestNativeFunctions
     public void init()
             throws Exception
     {
+        // TestNG may instantiate subclasses in parallel threads; synchronized ensures
+        // one-time initialization of shared static state, volatile ensures visibility.
         synchronized (AbstractTestNativeFunctions.class) {
             if (sharedQueryRunner == null) {
                 sharedQueryRunner = NativeSidecarPluginQueryRunner.getQueryRunner();
                 FunctionAndTypeManager functionAndTypeManager = sharedQueryRunner.getCoordinator().getFunctionAndTypeManager();
                 sharedMetadata = MetadataManager.createTestMetadataManager(functionAndTypeManager);
                 sharedTranslator = new TestingRowExpressionTranslator(sharedMetadata);
-                sharedRowExpressionInterpreter = getRowExpressionInterpreter(functionAndTypeManager, sharedQueryRunner.getCoordinator().getPluginNodeManager());
+                sharedRowExpressionInterpreter = getRowExpressionInterpreter(functionAndTypeManager);
             }
         }
         metadata = sharedMetadata;
@@ -151,7 +130,7 @@ public abstract class AbstractTestNativeFunctions
     }
 
     @Override
-    public void assertInvalidFunction(String projection, StandardErrorCode errorCode, @Language("RegExp") String errorMessage)
+    public void assertInvalidFunction(String projection, StandardErrorCode errorCode, String messagePattern)
     {
         RowExpression rowExpression = sqlToRowExpression(projection);
         RowExpressionOptimizationResult optimizationResult = evaluate(rowExpression);
@@ -161,7 +140,8 @@ public abstract class AbstractTestNativeFunctions
         assertEquals(failureInfo.getErrorCode().getCode(), errorCode.toErrorCode().getCode());
         assertNull(optimizationResult.getOptimizedExpression());
         assertNotNull(failureInfo.getMessage());
-        assertTrue(failureInfo.getMessage().contains(errorMessage), format("Sidecar response: %s did not contain expected error message: %s.", failureInfo, errorMessage));
+        assertTrue(failureInfo.getMessage().equals(messagePattern) || failureInfo.getMessage().matches(messagePattern),
+                format("Sidecar error message [%s] doesn't match [%s]", failureInfo.getMessage(), messagePattern));
     }
 
     @Override
@@ -171,13 +151,13 @@ public abstract class AbstractTestNativeFunctions
     }
 
     @Override
-    public void assertNotSupported(String projection, @Language("RegExp") String message)
+    public void assertNotSupported(String projection, String message)
     {
         assertInvalidFunction(projection, NOT_SUPPORTED, message);
     }
 
     @Override
-    public void assertInvalidCast(@Language("SQL") String projection, @Language("RegExp") String message)
+    public void assertInvalidCast(@Language("SQL") String projection, String message)
     {
         assertInvalidFunction(projection, INVALID_CAST_ARGUMENT, message);
     }
@@ -494,38 +474,9 @@ public abstract class AbstractTestNativeFunctions
         return results.get(0);
     }
 
-    private NativeSidecarExpressionInterpreter getRowExpressionInterpreter(FunctionAndTypeManager functionAndTypeManager, NodeManager nodeManager)
+    private static NativeSidecarExpressionInterpreter getRowExpressionInterpreter(FunctionAndTypeManager functionAndTypeManager)
     {
-        Module module = binder -> {
-            binder.bind(NodeManager.class).toInstance(nodeManager);
-            binder.bind(TypeManager.class).toInstance(functionAndTypeManager);
-            binder.install(new JsonModule());
-            binder.install(new HandleJsonModule(functionAndTypeManager.getHandleResolver()));
-            binder.bind(ConnectorManager.class).toProvider(() -> null).in(Scopes.SINGLETON);
-            binder.install(new ThriftCodecModule());
-            configBinder(binder).bindConfig(FeaturesConfig.class);
-
-            jsonBinder(binder).addDeserializerBinding(Type.class).to(TypeDeserializer.class);
-            newSetBinder(binder, Type.class);
-
-            binder.bind(BlockEncodingSerde.class).to(BlockEncodingManager.class).in(Scopes.SINGLETON);
-            newSetBinder(binder, BlockEncoding.class);
-            jsonBinder(binder).addSerializerBinding(Block.class).to(BlockJsonSerde.Serializer.class);
-            jsonBinder(binder).addDeserializerBinding(Block.class).to(BlockJsonSerde.Deserializer.class);
-            jsonCodecBinder(binder).bindJsonCodec(ExpressionOptimizationRequest.class);
-            jsonCodecBinder(binder).bindListJsonCodec(RowExpression.class);
-            jsonCodecBinder(binder).bindListJsonCodec(RowExpressionOptimizationResult.class);
-
-            httpClientBinder(binder).bindHttpClient("sidecar", ForSidecarInfo.class);
-
-            binder.bind(NativeSidecarExpressionInterpreter.class).in(Scopes.SINGLETON);
-        };
-        Bootstrap app = new Bootstrap(ImmutableList.of(module));
-        Injector injector = app
-                .doNotInitializeLogging()
-                .quiet()
-                .initialize();
-
-        return injector.getInstance(NativeSidecarExpressionInterpreter.class);
+        return TestNativeExpressionInterpreter.getRowExpressionInterpreter(
+                functionAndTypeManager, sharedQueryRunner.getCoordinator().getPluginNodeManager());
     }
 }

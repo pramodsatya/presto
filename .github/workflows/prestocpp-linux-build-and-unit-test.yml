@@ -420,13 +420,6 @@ jobs:
           name: presto-native-build
           path: presto-native-execution/_build/release
 
-      - name: Update velox
-        if: |
-          github.event_name == 'schedule' || needs.changes.outputs.codechange == 'true'
-        run: |
-          cd presto-native-execution
-          make velox-submodule
-
       - name: Restore execute permissions and library path
         if: |
           github.event_name == 'schedule' || needs.changes.outputs.codechange == 'true'
