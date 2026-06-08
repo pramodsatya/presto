@@ -92,8 +92,8 @@ public class NativeQueryRunnerUtils
      * Creates all tables for local testing, except for bench tables.
      *
      * @param queryRunner the QueryRunner instance used to execute table creation queries.
-     * @param storageFormat File format to use for the tables. If the default storage format is specified, date columns
-     *                      are cast to VARCHAR, since DWRF does not support DATE type.
+     * @param storageFormat File format to use for the tables. If the default storage format (DWRF) is specified, date
+     *                      columns are cast to VARCHAR, since DWRF does not support the DATE type.
      * @param useTpchStandardSchema when true, lineitem table is created with 16 columns as specified in the TPC-H
      *                              standard; otherwise, the lineitem table is created with additional columns for
      *                              testing purposes.
@@ -130,7 +130,7 @@ public class NativeQueryRunnerUtils
     public static void createAllIcebergTables(QueryRunner queryRunner)
     {
         createLineitemStandard(queryRunner, ICEBERG_DEFAULT_STORAGE_FORMAT);
-        createOrders(queryRunner);
+        createOrders(queryRunner, ICEBERG_DEFAULT_STORAGE_FORMAT);
         createNationWithFormat(queryRunner, ICEBERG_DEFAULT_STORAGE_FORMAT);
         createCustomer(queryRunner);
         createPart(queryRunner);
@@ -194,18 +194,17 @@ public class NativeQueryRunnerUtils
 
     public static void createLineitemStandard(Session session, QueryRunner queryRunner, String storageFormat)
     {
-        if (!queryRunner.tableExists(session, "lineitem")) {
-            boolean castDateToVarchar = DEFAULT_STORAGE_FORMAT.equals(storageFormat);
-            String shipDate = castDateToVarchar ? "cast(shipdate as varchar) as shipdate" : "shipdate";
-            String commitDate = castDateToVarchar ? "cast(commitdate as varchar) as commitdate" : "commitdate";
-            String receiptDate = castDateToVarchar ? "cast(receiptdate as varchar) as receiptdate" : "receiptdate";
+        queryRunner.execute(session, "DROP TABLE IF EXISTS lineitem");
+        boolean castDateToVarchar = DEFAULT_STORAGE_FORMAT.equals(storageFormat);
+        String shipDate = castDateToVarchar ? "cast(shipdate as varchar) as shipdate" : "shipdate";
+        String commitDate = castDateToVarchar ? "cast(commitdate as varchar) as commitdate" : "commitdate";
+        String receiptDate = castDateToVarchar ? "cast(receiptdate as varchar) as receiptdate" : "receiptdate";
 
-            queryRunner.execute(session, "CREATE TABLE lineitem AS " +
-                    "SELECT orderkey, partkey, suppkey, linenumber, quantity, extendedprice, discount, tax, " +
-                    "   returnflag, linestatus, " + shipDate + ", " + commitDate + ", " + receiptDate + ", " +
-                    "   shipinstruct, shipmode, comment " +
-                    "FROM tpch.tiny.lineitem");
-        }
+        queryRunner.execute(session, "CREATE TABLE lineitem AS " +
+                "SELECT orderkey, partkey, suppkey, linenumber, quantity, extendedprice, discount, tax, " +
+                "   returnflag, linestatus, " + shipDate + ", " + commitDate + ", " + receiptDate + ", " +
+                "   shipinstruct, shipmode, comment " +
+                "FROM tpch.tiny.lineitem");
     }
 
     public static void createOrders(QueryRunner queryRunner)
