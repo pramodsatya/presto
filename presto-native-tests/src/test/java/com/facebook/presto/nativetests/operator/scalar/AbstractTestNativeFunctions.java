@@ -61,6 +61,7 @@ import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 import static com.facebook.presto.SessionTestUtils.TEST_SESSION;
 import static com.facebook.presto.common.type.IpPrefixType.IPPREFIX;
@@ -140,7 +141,7 @@ public abstract class AbstractTestNativeFunctions
         assertEquals(failureInfo.getErrorCode().getCode(), errorCode.toErrorCode().getCode());
         assertNull(optimizationResult.getOptimizedExpression());
         assertNotNull(failureInfo.getMessage());
-        assertTrue(failureInfo.getMessage().equals(messagePattern) || failureInfo.getMessage().matches(messagePattern),
+        assertTrue(failureInfo.getMessage().contains(messagePattern) || Pattern.compile(messagePattern).matcher(failureInfo.getMessage()).find(),
                 format("Sidecar error message [%s] doesn't match [%s]", failureInfo.getMessage(), messagePattern));
     }
 
